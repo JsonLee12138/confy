@@ -2,8 +2,6 @@
 
 A full-scenario Go configuration management library built on [viper](https://github.com/spf13/viper).
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/JsonLee12138/confy.svg)](https://pkg.go.dev/github.com/JsonLee12138/confy)
-
 ## Features
 
 - **Environment-aware multi-file merging** — auto-discovers `config.yaml` → `config.local.yaml` → `config.{env}.yaml` → `config.{env}.local.yaml`
