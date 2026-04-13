@@ -15,6 +15,7 @@ type Config struct {
 	mu        sync.RWMutex
 	watchOnce sync.Once
 	snapshot  map[string]any
+	bound     any
 }
 
 // New creates a new Config instance with the given options.

@@ -24,6 +24,8 @@ func (c *Config) Bind(instance any) error {
 		return fmt.Errorf("confy: failed to unmarshal config: %w", err)
 	}
 
+	c.bound = instance
+
 	if c.opts.watchable {
 		c.watchOnce.Do(func() {
 			c.v.WatchConfig()
