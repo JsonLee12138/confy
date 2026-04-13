@@ -43,6 +43,11 @@ func New(opts ...Option) (*Config, error) {
 	v := viper.New()
 	v.SetConfigType(string(o.fileType))
 
+	// Set the first config file path so WatchConfig() knows what to watch.
+	if len(configPaths) > 0 {
+		v.SetConfigFile(configPaths[0])
+	}
+
 	for _, configPath := range configPaths {
 		tempV := viper.New()
 		tempV.SetConfigFile(configPath)
