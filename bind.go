@@ -20,6 +20,20 @@ func (c *Config) Bind(instance any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Decrypt encrypted values before unmarshaling
+	if c.opts.encAlgo == "aes-gcm" && len(c.opts.encKey) > 0 {
+		for _, key := range c.v.AllKeys() {
+			val := c.v.GetString(key)
+			if isEncryptedValue(val) {
+				decrypted, err := decryptConfigValue(val, c.opts.encKey)
+				if err != nil {
+					return fmt.Errorf("confy: failed to decrypt key %s: %w", key, err)
+				}
+				c.v.Set(key, decrypted)
+			}
+		}
+	}
+
 	if err := c.v.Unmarshal(&instance); err != nil {
 		return fmt.Errorf("confy: failed to unmarshal config: %w", err)
 	}

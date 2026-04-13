@@ -1,6 +1,7 @@
 package confy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -97,6 +98,41 @@ func TestNew_WithInheritance(t *testing.T) {
 	}
 	if cfg.Get("server.host") != "0.0.0.0" {
 		t.Errorf("expected host '0.0.0.0', got %v", cfg.Get("server.host"))
+	}
+}
+
+func TestNew_WithEncryption(t *testing.T) {
+	dir := t.TempDir()
+	key := make([]byte, 32)
+	copy(key, []byte("0123456789abcdef0123456789abcdef"))
+
+	encVal, _ := encryptConfigValue("secret_password", key)
+	writeFile(t, dir, "config.yaml", fmt.Sprintf("database:\n  password: %s\n  host: localhost", encVal))
+
+	cfg, err := New(
+		WithPath(dir),
+		WithEncryption("aes-gcm", key),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var appCfg struct {
+		Database struct {
+			Password string `mapstructure:"password"`
+			Host     string `mapstructure:"host"`
+		} `mapstructure:"database"`
+	}
+
+	if err := cfg.Bind(&appCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if appCfg.Database.Password != "secret_password" {
+		t.Errorf("expected decrypted 'secret_password', got '%s'", appCfg.Database.Password)
+	}
+	if appCfg.Database.Host != "localhost" {
+		t.Errorf("expected 'localhost', got '%s'", appCfg.Database.Host)
 	}
 }
 
