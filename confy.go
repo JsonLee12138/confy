@@ -49,13 +49,12 @@ func New(opts ...Option) (*Config, error) {
 	}
 
 	for _, configPath := range configPaths {
-		tempV := viper.New()
-		tempV.SetConfigFile(configPath)
-		if err := tempV.ReadInConfig(); err != nil {
-			return nil, fmt.Errorf("confy: error reading %s: %w", configPath, err)
+		resolved, err := resolveBaseInheritance(configPath, o.fileType, make(map[string]bool))
+		if err != nil {
+			return nil, fmt.Errorf("confy: failed to resolve inheritance for %s: %w", configPath, err)
 		}
-		for _, key := range tempV.AllKeys() {
-			v.Set(key, tempV.Get(key))
+		for key, val := range resolved {
+			v.Set(key, val)
 		}
 	}
 

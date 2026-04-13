@@ -82,6 +82,24 @@ func TestNew_JSON(t *testing.T) {
 	}
 }
 
+func TestNew_WithInheritance(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "base.yaml", "server:\n  port: 8080\n  host: 0.0.0.0")
+	writeFile(t, dir, "config.yaml", "base: base.yaml\nserver:\n  port: 9090")
+
+	cfg, err := New(WithPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Get("server.port") != 9090 {
+		t.Errorf("expected port 9090, got %v", cfg.Get("server.port"))
+	}
+	if cfg.Get("server.host") != "0.0.0.0" {
+		t.Errorf("expected host '0.0.0.0', got %v", cfg.Get("server.host"))
+	}
+}
+
 func TestNew_TOML(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("name = \"confy\"\n"), 0644)
