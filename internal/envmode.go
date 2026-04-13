@@ -50,3 +50,10 @@ func Mode() EnvMode {
 func SetMode(mode EnvMode) {
 	os.Setenv(EnvModeKey, string(mode))
 }
+
+// ResetMode resets the cached mode so that the next call to Mode()
+// re-reads the environment variable. Intended for testing only.
+func ResetMode() {
+	currentEnv = ""
+	modeOnce = sync.Once{}
+}
