@@ -1,14 +1,14 @@
 package confy
 
-import "fmt"
+import "errors"
 
 var (
-	ErrNilConfig       = fmt.Errorf("confy: config instance is nil")
-	ErrNilTarget       = fmt.Errorf("confy: target instance is nil")
-	ErrNoConfigFiles   = fmt.Errorf("confy: no valid configuration files found")
-	ErrNoSnapshot      = fmt.Errorf("confy: no snapshot available to restore")
-	ErrNilSnapshot     = fmt.Errorf("confy: snapshot is nil")
-	ErrEmptyExportPath = fmt.Errorf("confy: export path is empty")
-	ErrMustBeStruct    = fmt.Errorf("confy: config must be a struct")
-	ErrCycleDetected   = fmt.Errorf("confy: circular base inheritance detected")
+	ErrNilConfig       = errors.New("confy: config instance is nil")
+	ErrNilTarget       = errors.New("confy: target instance is nil")
+	ErrNoConfigFiles   = errors.New("confy: no valid configuration files found")
+	ErrNoSnapshot      = errors.New("confy: no snapshot available to restore")
+	ErrNilSnapshot     = errors.New("confy: snapshot is nil")
+	ErrEmptyExportPath = errors.New("confy: export path is empty")
+	ErrMustBeStruct    = errors.New("confy: config must be a struct")
+	ErrCycleDetected   = errors.New("confy: circular base inheritance detected")
 )
