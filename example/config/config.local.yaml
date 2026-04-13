@@ -1,0 +1,13 @@
+# config.local.yaml — 本地开发覆盖配置
+# 此文件应被 .gitignore，优先级高于 config.yaml
+
+server:
+  port: 9001
+
+database:
+  host: "127.0.0.1"
+  password: "dev_password_123"
+
+log:
+  level: "debug"
+  output: "stdout"

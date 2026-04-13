@@ -1,0 +1,9 @@
+# config.yaml — 主配置文件
+# 通过 base 字段继承 base.yaml 中的默认值
+base: base.yaml
+
+server:
+  mode: "debug"
+
+log:
+  level: "debug"
