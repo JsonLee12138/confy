@@ -26,6 +26,15 @@ func New(opts ...Option) (*Config, error) {
 	}
 
 	// Load .env files first (lower priority than system env)
+	// Auto-discovered .env files (from WithDotEnvAuto) are loaded before manually specified ones,
+	// so manually specified files take higher priority.
+	if o.dotEnvDir != "" {
+		for _, envFile := range getDotEnvFilePaths(o.dotEnvDir) {
+			if err := loadDotEnv(envFile); err != nil {
+				return nil, fmt.Errorf("confy: failed to load dotenv %s: %w", envFile, err)
+			}
+		}
+	}
 	for _, envFile := range o.dotEnvFiles {
 		if err := loadDotEnv(envFile); err != nil {
 			return nil, fmt.Errorf("confy: failed to load dotenv %s: %w", envFile, err)

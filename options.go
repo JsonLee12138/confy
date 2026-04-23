@@ -14,6 +14,7 @@ type configOptions struct {
 	onChange    func(Event)
 	loadAll     bool
 	dotEnvFiles []string
+	dotEnvDir   string
 	encAlgo     string
 	encKey      []byte
 }
@@ -85,6 +86,19 @@ func WithLoadAll(enable bool) Option {
 func WithDotEnv(path string) Option {
 	return func(o *configOptions) {
 		o.dotEnvFiles = append(o.dotEnvFiles, path)
+	}
+}
+
+// WithDotEnvAuto enables automatic .env file discovery based on environment mode.
+// It discovers and loads .env files in priority order: .env → .env.local → .env.{env} → .env.{env}.local
+// The dir parameter specifies the directory to search in (defaults to "." if empty).
+func WithDotEnvAuto(dir ...string) Option {
+	return func(o *configOptions) {
+		if len(dir) > 0 && dir[0] != "" {
+			o.dotEnvDir = dir[0]
+		} else {
+			o.dotEnvDir = "."
+		}
 	}
 }
 

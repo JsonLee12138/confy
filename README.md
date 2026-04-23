@@ -7,7 +7,7 @@ A full-scenario Go configuration management library built on [viper](https://git
 - **Environment-aware multi-file merging** — auto-discovers `config.yaml` → `config.local.yaml` → `config.{env}.yaml` → `config.{env}.local.yaml`
 - **Environment variable override** — `database.host` ↔ `MYAPP_DATABASE_HOST`
 - **Multi-format support** — YAML, JSON, TOML (mixed in same directory)
-- **.env file loading** — auto-loads `.env` files with proper priority
+- **.env file loading** — environment-aware `.env` discovery: `.env` → `.env.local` → `.env.{env}` → `.env.{env}.local`
 - **Hot-reload** — file watching with fsnotify for development
 - **Struct binding** — unmarshal to Go structs with `mapstructure` tags
 - **Struct defaults** — `default:"value"` tag support via `creasty/defaults`
@@ -96,7 +96,49 @@ Environment is detected via `GO_ENV_MODE` env var (`development`/`production`/`t
 | `WithOnChange(fn)` | Callback on config change |
 | `WithLoadAll(enable)` | Load all files in directory |
 | `WithDotEnv(path)` | Load a `.env` file |
+| `WithDotEnvAuto(dir...)` | Auto-discover `.env` files by env mode |
 | `WithEncryption(algo, key)` | Enable value encryption |
+
+## .env Files
+
+Two ways to load `.env` files:
+
+### Manual — `WithDotEnv(path)`
+
+Load specific `.env` files by path:
+
+```go
+confy.New(
+    confy.WithDotEnv(".env"),
+    confy.WithDotEnv(".env.local"),
+)
+```
+
+### Auto-discovery — `WithDotEnvAuto(dir...)`
+
+Automatically discovers and loads `.env` files based on `GO_ENV_MODE`, following the same priority pattern as config files:
+
+```go
+confy.New(confy.WithDotEnvAuto())      // search in current directory
+confy.New(confy.WithDotEnvAuto("etc")) // search in "etc/" directory
+```
+
+#### .env File Priority (highest last)
+
+1. `.env`
+2. `.env.local`
+3. `.env.{env}`
+4. `.env.{env}.local`
+
+When `GO_ENV_MODE=production`, the discovery order is:
+
+```
+.env → .env.local → .env.production → .env.production.local
+```
+
+Environment aliases are supported: `dev`/`development`, `prod`/`pro`/`production`, `test`/`testing`.
+
+Files that don't exist are silently skipped. System environment variables always take highest priority.
 
 ## Encrypted Values
 
@@ -120,6 +162,27 @@ base: base.yaml
 server:
   port: 9090  # overrides parent
 ```
+
+## Example
+
+A complete Gin + confy demo is available in the `example/` directory:
+
+```bash
+cd example
+go run .
+```
+
+The example demonstrates:
+- **Multi-file merging** — `config.yaml` + `config.local.yaml`
+- **Template inheritance** — `config.yaml` extends `base.yaml`
+- **Hot-reload** — config changes trigger automatic rebind
+- **Struct defaults** — Go struct `default` tags fill in missing values
+- **Validation** — `App.Validate()` enforces port ranges
+- **Env var overrides** — set `MYAPP_SERVER_PORT=9090` to override
+
+Endpoints:
+- `GET /health` — health check
+- `GET /config` — view current config (password masked)
 
 ## License
 

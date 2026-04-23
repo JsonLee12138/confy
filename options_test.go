@@ -88,6 +88,33 @@ func TestWithDotEnv(t *testing.T) {
 	}
 }
 
+func TestWithDotEnvAuto_DefaultDir(t *testing.T) {
+	opts := defaultOptions()
+	WithDotEnvAuto()(opts)
+
+	if opts.dotEnvDir != "." {
+		t.Errorf("expected dotEnvDir '.', got '%s'", opts.dotEnvDir)
+	}
+}
+
+func TestWithDotEnvAuto_CustomDir(t *testing.T) {
+	opts := defaultOptions()
+	WithDotEnvAuto("etc")(opts)
+
+	if opts.dotEnvDir != "etc" {
+		t.Errorf("expected dotEnvDir 'etc', got '%s'", opts.dotEnvDir)
+	}
+}
+
+func TestWithDotEnvAuto_EmptyDir(t *testing.T) {
+	opts := defaultOptions()
+	WithDotEnvAuto("")(opts)
+
+	if opts.dotEnvDir != "." {
+		t.Errorf("expected dotEnvDir '.' for empty string, got '%s'", opts.dotEnvDir)
+	}
+}
+
 func TestWithEncryption(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	opts := defaultOptions()
