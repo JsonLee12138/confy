@@ -3,6 +3,7 @@ package confy
 import (
 	"context"
 	"errors"
+	"github.com/JsonLee12138/confy/core"
 	"github.com/spf13/viper"
 	"testing"
 )
@@ -38,3 +39,5 @@ func TestProviderOptions(t *testing.T) {
 		t.Fatalf("bind: %v %+v", err, target)
 	}
 }
+
+func (*staticProvider) Type() core.ProviderType { return core.ProviderCustom }

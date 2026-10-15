@@ -1,12 +1,16 @@
 package confy
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/JsonLee12138/confy/core"
+)
 
 var (
 	ErrInvalidOptions   = errors.New("confy: invalid or conflicting provider options")
 	ErrInvalidProvider  = errors.New("confy: provider returned nil configuration")
 	ErrWatchUnsupported = errors.New("confy: provider does not support watching")
-	ErrClosed           = errors.New("confy: config is closed")
+	ErrClosed           = core.ErrClosed
 	ErrBoundTarget      = errors.New("confy: provider supports only one binding target")
 	ErrCandidate        = errors.New("confy: candidate decode, decryption or validation failed")
 	ErrNilConfig        = errors.New("confy: config instance is nil")

@@ -12,23 +12,14 @@ import (
 
 // Config is the main configuration instance.
 type Config struct {
-	v             *viper.Viper
-	opts          *configOptions
-	mu            sync.RWMutex
-	provider      Provider
-	ctx           context.Context
-	cancel        context.CancelFunc
-	watcher       Watcher
-	watching      bool
-	closed        bool
-	closeOnce     sync.Once
-	closeErr      error
-	overrides     map[string]any
-	watchBound    any
-	watchDefaults bool
-	lastSettings  map[string]any
-	snapshot      map[string]any
-	bound         any
+	v         *viper.Viper
+	opts      *configOptions
+	mu        sync.RWMutex
+	provider  Provider
+	watch     watchState
+	lifecycle lifecycleState
+	overrides map[string]any
+	bound     any
 }
 
 // New creates a new Config instance with the given options.
@@ -85,7 +76,7 @@ func New(opts ...Option) (*Config, error) {
 	return &Config{
 		v:        v,
 		opts:     o,
-		provider: provider, ctx: ctx, cancel: cancel, overrides: make(map[string]any),
+		provider: provider, lifecycle: lifecycleState{ctx: ctx, cancel: cancel}, overrides: make(map[string]any),
 	}, nil
 }
 
@@ -100,7 +91,7 @@ func (c *Config) Get(key string) any {
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
+	if c.lifecycle.closed {
 		return
 	}
 	c.overrides[strings.ToLower(key)] = value

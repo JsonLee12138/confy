@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JsonLee12138/confy"
+	"github.com/JsonLee12138/confy/core"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 )
 
@@ -19,7 +19,7 @@ type watcher struct {
 	cancelErr error
 }
 
-func (p *Provider) Watch(ctx context.Context) (confy.Watcher, error) {
+func (p *Provider) Watch(ctx context.Context) (core.Watcher, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -68,7 +68,7 @@ func (p *Provider) Watch(ctx context.Context) (confy.Watcher, error) {
 	}
 	return w, nil
 }
-func (w *watcher) Next(ctx context.Context) (confy.Change, error) {
+func (w *watcher) Next(ctx context.Context) (core.Change, error) {
 	// ListenConfig owns the subscription. A bounded consistency read also
 	// covers notifications coalesced/lost while the SDK reconnects or refreshes
 	// its internal listener cache; it does not implement a polling protocol.
@@ -80,11 +80,11 @@ func (w *watcher) Next(ctx context.Context) (confy.Change, error) {
 	defer timer.Stop()
 	select {
 	case <-w.ctx.Done():
-		return confy.Change{}, w.ctx.Err()
+		return core.Change{}, w.ctx.Err()
 	case <-ctx.Done():
-		return confy.Change{}, ctx.Err()
+		return core.Change{}, ctx.Err()
 	case <-w.done:
-		return confy.Change{}, context.Canceled
+		return core.Change{}, context.Canceled
 	case <-w.changes:
 	case <-timer.C:
 	}
@@ -93,19 +93,19 @@ func (w *watcher) Next(ctx context.Context) (confy.Change, error) {
 	defer p.mu.Unlock()
 	select {
 	case <-w.done:
-		return confy.Change{}, context.Canceled
+		return core.Change{}, context.Canceled
 	default:
 	}
 	content, err := p.readLocked(ctx)
 	w.retry = err != nil
 	if err != nil {
-		return confy.Change{}, err
+		return core.Change{}, err
 	}
 	v, err := parse(content, p.opts.format)
 	if err != nil {
-		return confy.Change{}, p.safe(ErrDocument)
+		return core.Change{}, p.safe(ErrDocument)
 	}
-	return confy.Change{Config: v, Event: confy.Event{Name: p.resource(), Op: confy.EventWrite}}, nil
+	return core.Change{Config: v, Event: core.Event{Name: p.resource(), Op: core.EventWrite}}, nil
 }
 func (w *watcher) stopLocked() {
 	w.once.Do(func() {

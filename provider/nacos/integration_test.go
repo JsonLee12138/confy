@@ -121,6 +121,9 @@ func encryptedFixture(t *testing.T, plain string, key []byte) string {
 }
 
 type integrationConfig struct {
+	Server struct {
+		Port int `mapstructure:"port"`
+	} `mapstructure:"server"`
 	Name      string
 	Removed   string
 	Port      int
@@ -163,10 +166,11 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 	plain := "confy-test-secret-7b8d0c"
 	encoded := encryptedFixture(t, plain, key)
 	content := func(name string, port int) string {
-		return fmt.Sprintf("name: %s\nport: %d\npassword: ''\nencrypted: %s\n", name, port, encoded)
+		return fmt.Sprintf("server:\n  port: 8080\nname: %s\nport: %d\npassword: ''\nencrypted: %s\n", name, port, encoded)
 	}
 	s.publish(t, id, content("initial", 1)+"removed: initial\n")
 	t.Setenv("CONFYIT_PASSWORD", plain)
+	t.Setenv("CONFYIT_SERVER_PORT", "9090")
 	httpProxy := newDisconnectProxy(t, net.JoinHostPort(s.server.IpAddr, strconv.FormatUint(s.server.Port, 10)))
 	grpcProxy := newDisconnectProxy(t, net.JoinHostPort(s.server.IpAddr, strconv.FormatUint(s.server.Port+1000, 10)))
 	server := s.server
@@ -183,13 +187,16 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cfg.Close()
+	if cfg.Get("server.port") != "9090" {
+		t.Fatal("initial Nacos read did not apply nested ENV override")
+	}
 	// Change after Load, before the first subscription.
 	s.publish(t, id, content("between", 2))
 	if err = cfg.BindWithDefaults(&bound); err != nil {
 		t.Fatal(err)
 	}
 	got := awaitConfig(t, updates, "between")
-	if got.Password != plain || got.Encrypted != plain || got.Removed != "" || got.Timeout != 30 {
+	if got.Password != plain || got.Encrypted != plain || got.Removed != "" || got.Timeout != 30 || got.Server.Port != 9090 {
 		t.Fatal("binding/ENV/decryption/deletion mismatch")
 	}
 	cfg.Set("port", 99)
@@ -197,7 +204,7 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 		s.publish(t, id, content(fmt.Sprintf("burst-%d", i), 3+i))
 	}
 	got = awaitConfig(t, updates, "burst-3")
-	if got.Port != 99 {
+	if got.Port != 99 || got.Server.Port != 9090 {
 		t.Fatal("Set override lost")
 	}
 	currentName := "burst-3"
@@ -247,7 +254,9 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 	}
 	httpProxy.disconnect(false)
 	grpcProxy.disconnect(false)
-	awaitConfig(t, updates, "offline")
+	if got := awaitConfig(t, updates, "offline"); got.Server.Port != 9090 {
+		t.Fatal("reconnected update lost nested ENV override")
+	}
 	status, raw, err := s.request(http.MethodGet, id, "")
 	if err != nil || status != 200 || !strings.Contains(raw, "name: offline") {
 		t.Fatal("remote readback failed")

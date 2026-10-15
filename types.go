@@ -1,5 +1,7 @@
 package confy
 
+import "github.com/JsonLee12138/confy/core"
+
 // Validator is an interface that config structs can implement
 // to perform custom validation.
 type Validator interface {
@@ -19,27 +21,22 @@ type ConfigInterface interface {
 	Set(key string, value any)
 }
 
-// FileType represents supported configuration file formats.
-type FileType string
+// Aliases keep existing option and event signatures source-compatible.
+type FileType = core.FileType
 
 const (
-	YAML FileType = "yaml"
-	JSON FileType = "json"
-	TOML FileType = "toml"
+	YAML = core.YAML
+	JSON = core.JSON
+	TOML = core.TOML
 )
 
-// Event represents a configuration file change event.
-type Event struct {
-	Name string
-	Op   EventOp
-}
-
-type EventOp uint32
+type Event = core.Event
+type EventOp = core.EventOp
 
 const (
-	EventCreate EventOp = 1 << iota
-	EventWrite
-	EventRemove
-	EventRename
-	EventChmod
+	EventCreate = core.EventCreate
+	EventWrite  = core.EventWrite
+	EventRemove = core.EventRemove
+	EventRename = core.EventRename
+	EventChmod  = core.EventChmod
 )

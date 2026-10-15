@@ -8,20 +8,39 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
+// watchState owns a single subscription and its active binding metadata.
+type watchState struct {
+	watcher      Watcher
+	active       bool
+	target       any
+	defaults     bool
+	lastSettings map[string]any
+}
+
+// lifecycleState synchronizes idempotent shutdown independently of callbacks.
+type lifecycleState struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	closed bool
+	once   sync.Once
+	err    error
+}
+
 func (c *Config) startWatchLocked() error {
-	if !c.opts.watchable || c.watching {
+	if !c.opts.watchable || c.watch.active {
 		return nil
 	}
 	p, ok := c.provider.(WatchProvider)
 	if !ok {
 		return ErrWatchUnsupported
 	}
-	w, err := p.Watch(c.ctx)
+	w, err := p.Watch(c.lifecycle.ctx)
 	if err != nil {
 		if w != nil {
 			_ = w.Close()
@@ -31,8 +50,8 @@ func (c *Config) startWatchLocked() error {
 	if w == nil {
 		return ErrInvalidProvider
 	}
-	c.watcher = w
-	c.watching = true
+	c.watch.watcher = w
+	c.watch.active = true
 	go c.consume(w)
 	return nil
 }
@@ -40,13 +59,13 @@ func (c *Config) consume(w Watcher) {
 	defer func() {
 		_ = w.Close()
 		c.mu.Lock()
-		if c.watcher == w {
-			c.watching = false
+		if c.watch.watcher == w {
+			c.watch.active = false
 		}
 		c.mu.Unlock()
 	}()
 	for {
-		change, err := w.Next(c.ctx)
+		change, err := w.Next(c.lifecycle.ctx)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) {
 			return
 		}
@@ -59,7 +78,7 @@ func (c *Config) consume(w Watcher) {
 			c.notifyError(stage)
 			// A broken third-party Watcher cannot turn repeated errors into a busy loop.
 			select {
-			case <-c.ctx.Done():
+			case <-c.lifecycle.ctx.Done():
 				return
 			case <-time.After(25 * time.Millisecond):
 			}
@@ -79,7 +98,7 @@ func (c *Config) compose(v *viper.Viper) {
 }
 func (c *Config) commit(change Change) error {
 	c.mu.Lock()
-	if c.closed {
+	if c.lifecycle.closed {
 		c.mu.Unlock()
 		return nil
 	}
@@ -90,18 +109,18 @@ func (c *Config) commit(change Change) error {
 	candidate := change.Config
 	c.compose(candidate)
 	settings := candidate.AllSettings()
-	if c.remote() && reflect.DeepEqual(settings, c.lastSettings) {
+	if adapterFor(c.provider).deduplicate && reflect.DeepEqual(settings, c.watch.lastSettings) {
 		c.mu.Unlock()
 		return nil
 	}
-	target := reflect.ValueOf(c.watchBound)
+	target := reflect.ValueOf(c.watch.target)
 	if !target.IsValid() || target.Kind() != reflect.Ptr || target.IsNil() {
 		c.mu.Unlock()
 		return ErrNilTarget
 	}
 	temporary := reflect.New(target.Elem().Type())
-	err := c.decode(candidate, temporary.Interface(), c.watchDefaults)
-	if err == nil && c.remote() {
+	err := c.decode(candidate, temporary.Interface(), c.watch.defaults)
+	if err == nil && adapterFor(c.provider).validateUpdates {
 		if validator, ok := temporary.Interface().(Validator); ok {
 			if validator.Validate() != nil {
 				err = ErrCandidate
@@ -114,7 +133,7 @@ func (c *Config) commit(change Change) error {
 	}
 	target.Elem().Set(temporary.Elem())
 	c.v = candidate
-	c.lastSettings = settings
+	c.watch.lastSettings = settings
 	fn := c.opts.onChange
 	// Claim callback execution while holding the state lock. Close prevents all
 	// subsequent claims; callbacks already claimed may finish, including Close.
@@ -126,7 +145,7 @@ func (c *Config) commit(change Change) error {
 }
 func (c *Config) notifyError(stage string) {
 	c.mu.Lock()
-	if c.closed {
+	if c.lifecycle.closed {
 		c.mu.Unlock()
 		return
 	}
@@ -146,21 +165,21 @@ func (c *Config) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.closeOnce.Do(func() {
+	c.lifecycle.once.Do(func() {
 		c.mu.Lock()
-		c.closed = true
-		w := c.watcher
-		cancel := c.cancel
+		c.lifecycle.closed = true
+		w := c.watch.watcher
+		cancel := c.lifecycle.cancel
 		c.mu.Unlock()
 		if cancel != nil {
 			cancel()
 		}
 		if w != nil {
-			c.closeErr = w.Close()
+			c.lifecycle.err = w.Close()
 		}
 		if closer, ok := c.provider.(io.Closer); ok {
-			c.closeErr = errors.Join(c.closeErr, closer.Close())
+			c.lifecycle.err = errors.Join(c.lifecycle.err, closer.Close())
 		}
 	})
-	return c.closeErr
+	return c.lifecycle.err
 }

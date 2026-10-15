@@ -12,7 +12,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/JsonLee12138/confy"
+	"github.com/JsonLee12138/confy/core"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/logger"
@@ -50,9 +50,9 @@ type Provider struct {
 
 var quietSDK sync.Once
 
-// New creates a single-Data-ID provider. A provider belongs to one confy.Config.
+// New creates a single-Data-ID provider. A provider belongs to one core.Config.
 func New(opts ...Option) *Provider {
-	o := options{format: confy.YAML, group: "DEFAULT_GROUP"}
+	o := options{format: core.YAML, group: "DEFAULT_GROUP"}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -67,13 +67,13 @@ func (p *Provider) resource() string {
 func (p *Provider) safe(err error) error { return fmt.Errorf("%w: %s", err, p.resource()) }
 func (p *Provider) initializeLocked() error {
 	if p.closed {
-		return confy.ErrClosed
+		return core.ErrClosed
 	}
 	if p.client != nil {
 		return nil
 	}
 	o := p.opts
-	if strings.TrimSpace(o.dataID) == "" || (len(o.servers) == 0 && o.client.Endpoint == "") || (o.format != confy.YAML && o.format != confy.JSON && o.format != confy.TOML) || o.client.OpenKMS || o.client.TLSCfg.TrustAll {
+	if strings.TrimSpace(o.dataID) == "" || (len(o.servers) == 0 && o.client.Endpoint == "") || (o.format != core.YAML && o.format != core.JSON && o.format != core.TOML) || o.client.OpenKMS || o.client.TLSCfg.TrustAll {
 		return ErrOptions
 	}
 	for _, part := range []string{o.dataID, o.group, o.client.NamespaceId} {
@@ -157,7 +157,7 @@ func (p *Provider) readLocked(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if p.closed {
-		return "", confy.ErrClosed
+		return "", core.ErrClosed
 	}
 	content, err := p.client.GetConfig(vo.ConfigParam{DataId: p.opts.dataID, Group: p.opts.group})
 	if ctx.Err() != nil {
@@ -168,7 +168,7 @@ func (p *Provider) readLocked(ctx context.Context) (string, error) {
 	}
 	return content, nil
 }
-func parse(content string, format confy.FileType) (*viper.Viper, error) {
+func parse(content string, format core.FileType) (*viper.Viper, error) {
 	if strings.TrimSpace(content) == "" {
 		return nil, ErrDocument
 	}
@@ -204,3 +204,9 @@ func (p *Provider) Close() error {
 	}
 	return nil
 }
+
+// Type identifies this adapter without making the consumer import the SDK.
+func (*Provider) Type() core.ProviderType { return core.ProviderNacos }
+
+var _ core.Provider = (*Provider)(nil)
+var _ core.WatchProvider = (*Provider)(nil)

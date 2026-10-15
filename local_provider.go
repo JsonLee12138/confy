@@ -3,6 +3,8 @@ package confy
 import (
 	"context"
 	"fmt"
+
+	"github.com/JsonLee12138/confy/core"
 	"github.com/spf13/viper"
 )
 
@@ -52,3 +54,9 @@ func (p *LocalProvider) Load(ctx context.Context) (*viper.Viper, error) {
 	}
 	return v, nil
 }
+
+// Type identifies the local adapter to the shared binding coordinator.
+func (*LocalProvider) Type() core.ProviderType { return core.ProviderLocal }
+
+var _ core.Provider = (*LocalProvider)(nil)
+var _ core.WatchProvider = (*LocalProvider)(nil)

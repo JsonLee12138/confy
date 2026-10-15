@@ -2,7 +2,7 @@
 package nacos
 
 import (
-	"github.com/JsonLee12138/confy"
+	"github.com/JsonLee12138/confy/core"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 )
 
@@ -11,7 +11,7 @@ type options struct {
 	servers       []constant.ServerConfig
 	client        constant.ClientConfig
 	dataID, group string
-	format        confy.FileType
+	format        core.FileType
 }
 
 func WithServers(servers []constant.ServerConfig) Option {
@@ -20,6 +20,6 @@ func WithServers(servers []constant.ServerConfig) Option {
 func WithClientConfig(client constant.ClientConfig) Option {
 	return func(o *options) { o.client = client }
 }
-func WithDataID(id string) Option             { return func(o *options) { o.dataID = id } }
-func WithGroup(group string) Option           { return func(o *options) { o.group = group } }
-func WithFormat(format confy.FileType) Option { return func(o *options) { o.format = format } }
+func WithDataID(id string) Option            { return func(o *options) { o.dataID = id } }
+func WithGroup(group string) Option          { return func(o *options) { o.group = group } }
+func WithFormat(format core.FileType) Option { return func(o *options) { o.format = format } }

@@ -31,13 +31,13 @@ func (c *Config) bind(instance any, withDefaults bool) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
+	if c.lifecycle.closed {
 		return ErrClosed
 	}
 	if c.v == nil {
 		return ErrNilConfig
 	}
-	if c.remote() && c.bound != nil && c.bound != instance {
+	if adapterFor(c.provider).singleTarget && c.bound != nil && c.bound != instance {
 		return ErrBoundTarget
 	}
 	settings := c.v.AllSettings()
@@ -45,18 +45,18 @@ func (c *Config) bind(instance any, withDefaults bool) error {
 		return err
 	}
 	c.bound = instance
-	if c.lastSettings == nil {
-		c.lastSettings = settings
+	if c.watch.lastSettings == nil {
+		c.watch.lastSettings = settings
 	}
 	// Historical local watching updates the first target; Validate uses the last.
-	if c.watchBound == nil || c.watchBound == instance {
-		c.watchBound = instance
-		c.watchDefaults = withDefaults
+	if c.watch.target == nil || c.watch.target == instance {
+		c.watch.target = instance
+		c.watch.defaults = withDefaults
 	}
 	return c.startWatchLocked()
 }
-func (c *Config) remote() bool { _, local := c.provider.(*LocalProvider); return !local }
 func (c *Config) decode(v *viper.Viper, target any, withDefaults bool) error {
+	adapter := adapterFor(c.provider)
 	if withDefaults {
 		if err := defaults.Set(target); err != nil {
 			return fmt.Errorf("confy: failed to set defaults: %w", err)
@@ -64,13 +64,13 @@ func (c *Config) decode(v *viper.Viper, target any, withDefaults bool) error {
 	}
 	for _, key := range v.AllKeys() {
 		value := v.GetString(key)
-		if c.remote() && strings.HasPrefix(value, encryptedPrefix) && (c.opts.encAlgo != "aes-gcm" || len(c.opts.encKey) == 0 || !isEncryptedValue(value)) {
+		if adapter.strictDecoding && strings.HasPrefix(value, encryptedPrefix) && (c.opts.encAlgo != "aes-gcm" || len(c.opts.encKey) == 0 || !isEncryptedValue(value)) {
 			return ErrCandidate
 		}
 		if c.opts.encAlgo == "aes-gcm" && len(c.opts.encKey) > 0 && isEncryptedValue(value) {
 			plain, err := decryptConfigValue(value, c.opts.encKey)
 			if err != nil {
-				if c.remote() {
+				if adapter.strictDecoding {
 					return ErrCandidate
 				}
 				return fmt.Errorf("confy: failed to decrypt key %s: %w", key, err)
@@ -79,7 +79,7 @@ func (c *Config) decode(v *viper.Viper, target any, withDefaults bool) error {
 		}
 	}
 	if err := v.Unmarshal(target); err != nil {
-		if c.remote() {
+		if adapter.strictDecoding {
 			return ErrCandidate
 		}
 		return fmt.Errorf("confy: failed to unmarshal config: %w", err)
