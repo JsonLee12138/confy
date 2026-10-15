@@ -1,5 +1,7 @@
 # Local / Nacos 实施与验收记录
 
+> 历史记录：以下实现快照对应调整前的提交 `97e91ee`。后续用户要求的 core 契约、Provider 分派和独立 Nacos 示例以 [本轮调整记录](refinement.md) 为准；下文关于旧 Gin 示例副本发布的描述已被撤回。
+
 日期：2026-10-15（Asia/Shanghai）。规格：`docs/SPEC.md`；实施授权来自用户随后要求“根据 Spec 进行开发”的指令。分支：`codex/nacos-provider`。
 
 ## 真实环境与结果

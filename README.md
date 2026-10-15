@@ -189,9 +189,6 @@ cfg, err := confy.New(
         nacos.WithFormat(confy.YAML), // JSON and TOML also supported
     )),
     confy.WithEnvPrefix("MYAPP"),
-    confy.WithWatch(true),
-    confy.WithOnChange(func(event confy.Event) { /* publish an independent view */ }),
-    confy.WithOnError(func(err error) { /* observe a rejected update */ }),
 )
 if err != nil { return err }
 defer cfg.Close()
@@ -204,9 +201,13 @@ return cfg.Validate() // initial business validation remains explicit
 - Priority is provider content, then nonempty ENV, then explicit `cfg.Set`. Put empty placeholder keys in remote documents for ENV-only fields; unknown ENV keys are not automatically discovered. Load credentials from ENV **before** constructing the provider; Confy dotenv loading cannot reevaluate already collected options.
 - Watching starts after the first complete successful binding. Registration failure is returned and may be retried by binding again. One remote target is supported; a different target returns `ErrBoundTarget`.
 - Remote updates decode into a fresh target, apply the original defaults rules, run a side-effect-free `Validator`, and commit only on success. Deleted fields disappear. Parse/decryption/validation errors, blank documents and deleted Data IDs preserve the last valid state. Initial Bind does not automatically call `Validator`.
-- Callbacks run outside internal locks and can call Get/Set/Bind/Close. Direct concurrent reads of the auto-updated target require application synchronization. For servers, decode an independent copy from `Snapshot` in OnChange and atomically publish it; the Gin example demonstrates this. Internal locking does not protect application reads of the target.
+- Callbacks run outside internal locks and can call Get/Set/Bind/Close. Direct concurrent reads of the auto-updated target require application synchronization. Internal locking does not protect application reads of the target. The standalone Nacos reading example does not enable watching.
 - `Close` is idempotent, releases subscriptions/client/cache and allows Get of the last state. Closed Set is a no-op; Bind/Restore return `ErrClosed`. A provider belongs to one Config. SDK operations use SDK timeouts; Context cannot interrupt an already-running SDK request.
 - Remote Confy ciphertext requires `WithEncryption("aes-gcm", key)`. Keep the key outside Nacos. ENV secrets and decrypted fields are never written back to Nacos or the SDK source cache. Snapshot and Export can contain plaintext.
+
+Provider/Watcher/Change/Event/FileType contracts live in [`core/`](core/). Both LocalProvider and NacosProvider implement `core.Provider` (`Type` + `Load`) and `core.WatchProvider`. The shared coordinator selects binding rules with a switch on `core.ProviderType`; it does not infer that every non-local provider is Nacos. Root-package aliases preserve existing `confy.Event`, `confy.FileType`, and option usage. Custom Provider implementations must explicitly implement `Type()`.
+
+The original `example/main.go` remains unchanged. Run the independent read-only Nacos example with `cd example && go run ./nacos`; see [its ENV override instructions](example/nacos/README.md). Neither example imports Viper/defaults or publishes configuration to Nacos.
 
 See [adapter security and lifecycle details](provider/nacos/README.md) for cache/logging behavior and [verification evidence](tasks/verification.md) for tested capabilities and remaining environment limits.
 

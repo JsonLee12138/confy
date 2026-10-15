@@ -14,3 +14,10 @@
 - [ ] 处理依赖漏洞扫描报告，并确认所需 Go 基线升级；本次未作安全发布放行。
 
 证据与代码行号见 `tasks/verification.md`。
+
+## 本轮结构与示例调整
+
+- [x] core 契约及根包兼容别名，Local/Nacos 明确类型与 switch 分派。
+- [x] 清理 Config 冗余快照字段，归组监听与关闭状态，保留旧 API。
+- [x] 恢复原 main，新建无 Viper/defaults 的 Nacos 读取示例。
+- [x] 类型分派、ENV/热更新与全部回归、示例构建、真实 r-nacos 验证。
