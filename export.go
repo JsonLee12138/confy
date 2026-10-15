@@ -12,6 +12,8 @@ func (c *Config) Export(path string) error {
 		return ErrEmptyExportPath
 	}
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("confy: failed to create directory %s: %w", dir, err)

@@ -1,11 +1,14 @@
 package confy
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Snapshot captures the current config state for later restoration.
 func (c *Config) Snapshot() (map[string]any, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	snapshot := make(map[string]any)
 	if err := c.v.Unmarshal(&snapshot); err != nil {
@@ -25,8 +28,12 @@ func (c *Config) Restore(snapshot map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.closed {
+		return ErrClosed
+	}
 	for k, v := range snapshot {
 		c.v.Set(k, v)
+		c.overrides[strings.ToLower(k)] = v
 	}
 
 	c.snapshot = snapshot

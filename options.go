@@ -6,17 +6,21 @@ import "os"
 type Option func(*configOptions)
 
 type configOptions struct {
-	basePath    string
-	fileName    string
-	fileType    FileType
-	envPrefix   string
-	watchable   bool
-	onChange    func(Event)
-	loadAll     bool
-	dotEnvFiles []string
-	dotEnvDir   string
-	encAlgo     string
-	encKey      []byte
+	provider      Provider
+	providerCount int
+	localExplicit bool
+	onError       func(error)
+	basePath      string
+	fileName      string
+	fileType      FileType
+	envPrefix     string
+	watchable     bool
+	onChange      func(Event)
+	loadAll       bool
+	dotEnvFiles   []string
+	dotEnvDir     string
+	encAlgo       string
+	encKey        []byte
 }
 
 func defaultOptions() *configOptions {
@@ -36,6 +40,7 @@ func defaultOptions() *configOptions {
 // WithPath sets the directory to search for config files.
 func WithPath(path string) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.basePath = path
 	}
 }
@@ -43,6 +48,7 @@ func WithPath(path string) Option {
 // WithFile sets the base config file name (without extension).
 func WithFile(name string) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.fileName = name
 	}
 }
@@ -50,6 +56,7 @@ func WithFile(name string) Option {
 // WithFileType sets the default config file format.
 func WithFileType(ft FileType) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.fileType = ft
 	}
 }
@@ -78,6 +85,7 @@ func WithOnChange(fn func(Event)) Option {
 // WithLoadAll enables loading all config files in the directory.
 func WithLoadAll(enable bool) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.loadAll = enable
 	}
 }
@@ -109,3 +117,11 @@ func WithEncryption(algo string, key []byte) Option {
 		o.encKey = key
 	}
 }
+
+// WithProvider selects a single configuration source instead of local files.
+func WithProvider(p Provider) Option {
+	return func(o *configOptions) { o.providerCount++; o.provider = p }
+}
+
+// WithOnError observes rejected updates and asynchronous watch errors.
+func WithOnError(fn func(error)) Option { return func(o *configOptions) { o.onError = fn } }

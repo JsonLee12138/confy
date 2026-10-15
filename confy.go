@@ -1,7 +1,9 @@
 package confy
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
@@ -10,12 +12,23 @@ import (
 
 // Config is the main configuration instance.
 type Config struct {
-	v         *viper.Viper
-	opts      *configOptions
-	mu        sync.RWMutex
-	watchOnce sync.Once
-	snapshot  map[string]any
-	bound     any
+	v             *viper.Viper
+	opts          *configOptions
+	mu            sync.RWMutex
+	provider      Provider
+	ctx           context.Context
+	cancel        context.CancelFunc
+	watcher       Watcher
+	watching      bool
+	closed        bool
+	closeOnce     sync.Once
+	closeErr      error
+	overrides     map[string]any
+	watchBound    any
+	watchDefaults bool
+	lastSettings  map[string]any
+	snapshot      map[string]any
+	bound         any
 }
 
 // New creates a new Config instance with the given options.
@@ -23,6 +36,11 @@ func New(opts ...Option) (*Config, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	provider := o.provider
+	if o.providerCount > 1 || (o.providerCount > 0 && (isNilProvider(provider) || o.localExplicit)) {
+		return nil, ErrInvalidOptions
 	}
 
 	// Load .env files first (lower priority than system env)
@@ -41,32 +59,21 @@ func New(opts ...Option) (*Config, error) {
 		}
 	}
 
-	configPaths := getConfigFilePaths(o)
-	if o.loadAll {
-		configPaths = getAllConfigFilePaths(o)
+	if provider == nil {
+		provider = &LocalProvider{opts: o}
 	}
-	if len(configPaths) == 0 {
-		return nil, fmt.Errorf("%w: in path %s", ErrNoConfigFiles, o.basePath)
-	}
-
-	v := viper.New()
-	v.SetConfigType(string(o.fileType))
-
-	// Set the first config file path so WatchConfig() knows what to watch.
-	if len(configPaths) > 0 {
-		v.SetConfigFile(configPaths[0])
-	}
-
-	for _, configPath := range configPaths {
-		resolved, err := resolveBaseInheritance(configPath, o.fileType, make(map[string]bool))
+	ctx, cancel := context.WithCancel(context.Background())
+	v, err := provider.Load(ctx)
+	if err != nil || v == nil {
+		cancel()
+		if closer, ok := provider.(io.Closer); ok {
+			_ = closer.Close()
+		}
 		if err != nil {
-			return nil, fmt.Errorf("confy: failed to resolve inheritance for %s: %w", configPath, err)
+			return nil, err
 		}
-		for key, val := range resolved {
-			v.Set(key, val)
-		}
+		return nil, ErrInvalidProvider
 	}
-
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	if o.envPrefix != "" {
 		v.SetEnvPrefix(o.envPrefix)
@@ -76,8 +83,9 @@ func New(opts ...Option) (*Config, error) {
 	applyEnvOverrides(v, o.envPrefix)
 
 	return &Config{
-		v:    v,
-		opts: o,
+		v:        v,
+		opts:     o,
+		provider: provider, ctx: ctx, cancel: cancel, overrides: make(map[string]any),
 	}, nil
 }
 
@@ -92,5 +100,9 @@ func (c *Config) Get(key string) any {
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	c.overrides[strings.ToLower(key)] = value
 	c.v.Set(key, value)
 }

@@ -3,7 +3,8 @@ package provider
 import "context"
 
 // Provider defines the interface for remote configuration sources.
-// This is a v2 placeholder — not used in v1.
+// Deprecated: unused legacy placeholder. Active adapters implement the public
+// confy.Provider and confy.WatchProvider contracts instead.
 type Provider interface {
 	Load(ctx context.Context) (map[string]any, error)
 	Watch(ctx context.Context, onChange func(Event)) error
@@ -19,6 +20,6 @@ type Event struct {
 type EventType int
 
 const (
-	EventPut    EventType = iota
+	EventPut EventType = iota
 	EventDelete
 )
