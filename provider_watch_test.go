@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -353,5 +354,57 @@ func TestLocalWatchReloadPreservesMergePriority(t *testing.T) {
 	got := receive(t, changed)
 	if got.Port != 42 || got.Name != "changed" {
 		t.Fatalf("reload lost priority: %+v", got)
+	}
+}
+
+func TestLocalAndRemoteBindEquivalence(t *testing.T) {
+	t.Setenv("CONFYEQ_SECRET", "from-env")
+	formats := map[FileType]string{YAML: "name: same\nport: 12\nsecret: ''", JSON: `{"name":"same","port":12,"secret":""}`, TOML: "name = 'same'\nport = 12\nsecret = ''"}
+	for format, content := range formats {
+		t.Run(string(format), func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, "config."+string(format), content)
+			local, err := New(WithPath(dir), WithFileType(format), WithEnvPrefix("CONFYEQ"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer local.Close()
+			v := viper.New()
+			v.SetConfigType(string(format))
+			if err = v.ReadConfig(strings.NewReader(content)); err != nil {
+				t.Fatal(err)
+			}
+			p := &staticProvider{value: v}
+			remote, err := New(WithProvider(p), WithEnvPrefix("CONFYEQ"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer remote.Close()
+			var left, right reloadTarget
+			if err = local.BindWithDefaults(&left); err != nil {
+				t.Fatal(err)
+			}
+			if err = remote.BindWithDefaults(&right); err != nil {
+				t.Fatal(err)
+			}
+			if left != right {
+				t.Fatalf("local=%+v remote=%+v", left, right)
+			}
+		})
+	}
+}
+func TestDisabledWatchNeverSubscribes(t *testing.T) {
+	p := queueProvider()
+	cfg, err := New(WithProvider(p), WithWatch(false), WithOnChange(func(Event) { t.Error("disabled watcher notified") }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cfg.Close()
+	var target reloadTarget
+	if err = cfg.Bind(&target); err != nil {
+		t.Fatal(err)
+	}
+	if p.starts != 0 {
+		t.Fatal("disabled Watch called provider")
 	}
 }
