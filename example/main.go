@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/creasty/defaults"
+	"github.com/spf13/viper"
 	"log"
 	"net/http"
+	"sync"
+	"sync/atomic"
 
 	"github.com/JsonLee12138/confy"
 	"github.com/gin-gonic/gin"
@@ -50,12 +54,43 @@ func (a *App) Validate() error {
 }
 
 func main() {
+	var current atomic.Pointer[App]
+	var publishMu sync.Mutex
+	var cfg *confy.Config
+	// Publish an independently decoded immutable view. Never read the target
+	// struct while Confy may be updating it in the background.
+	publish := func() error {
+		publishMu.Lock()
+		defer publishMu.Unlock()
+		snapshot, err := cfg.Snapshot()
+		if err != nil {
+			return err
+		}
+		v := viper.New()
+		if err = v.MergeConfigMap(snapshot); err != nil {
+			return err
+		}
+		next := new(App)
+		if err = v.Unmarshal(next); err != nil {
+			return err
+		}
+		if err = defaults.Set(next); err != nil {
+			return err
+		}
+		current.Store(next)
+		return nil
+	}
+	var err error
 	// --- 1. 初始化 confy ---
-	cfg, err := confy.New(
+	cfg, err = confy.New(
 		confy.WithPath("config"),
 		confy.WithEnvPrefix("MYAPP"),
 		confy.WithWatch(true), // 开启热更新
 		confy.WithOnChange(func(e confy.Event) {
+			if err := publish(); err != nil {
+				log.Printf("[confy] view publication failed")
+				return
+			}
 			log.Printf("[confy] config file changed: %s (op=%d)", e.Name, e.Op)
 		}),
 	)
@@ -63,9 +98,11 @@ func main() {
 		log.Fatalf("failed to init confy: %v", err)
 	}
 
+	defer cfg.Close()
+
 	// --- 2. 绑定配置（含结构体默认值） ---
-	var app App
-	if err := cfg.BindWithDefaults(&app); err != nil {
+	var bound App
+	if err := cfg.BindWithDefaults(&bound); err != nil {
 		log.Fatalf("failed to bind config: %v", err)
 	}
 
@@ -73,6 +110,11 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("config validation failed: %v", err)
 	}
+
+	if err := publish(); err != nil {
+		log.Fatal(err)
+	}
+	app := current.Load()
 
 	log.Printf("loaded config: server=%s:%d, db=%s@%s:%d/%s, log=%s",
 		app.Server.Host, app.Server.Port,
@@ -91,6 +133,7 @@ func main() {
 
 	// GET /config — 查看当前配置（脱敏）
 	r.GET("/config", func(c *gin.Context) {
+		app := current.Load()
 		safeDB := app.Database
 		safeDB.Password = "***"
 		c.JSON(http.StatusOK, gin.H{

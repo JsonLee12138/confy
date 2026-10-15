@@ -163,6 +163,53 @@ server:
   port: 9090  # overrides parent
 ```
 
+## Nacos provider
+
+Use the official SDK adapter in the same module:
+
+```go
+import (
+    "os"
+    "github.com/JsonLee12138/confy"
+    "github.com/JsonLee12138/confy/provider/nacos"
+    "github.com/nacos-group/nacos-sdk-go/v2/common/constant"
+)
+
+cfg, err := confy.New(
+    confy.WithProvider(nacos.New(
+        nacos.WithServers([]constant.ServerConfig{{IpAddr: "127.0.0.1", Port: 8848}}),
+        nacos.WithClientConfig(constant.ClientConfig{
+            NamespaceId: "", // public; use a namespace ID for other namespaces
+            Username: os.Getenv("NACOS_USERNAME"),
+            Password: os.Getenv("NACOS_PASSWORD"),
+            TimeoutMs: 5000,
+        }),
+        nacos.WithDataID("app.yaml"),
+        nacos.WithGroup("APP_GROUP"),
+        nacos.WithFormat(confy.YAML), // JSON and TOML also supported
+    )),
+    confy.WithEnvPrefix("MYAPP"),
+    confy.WithWatch(true),
+    confy.WithOnChange(func(event confy.Event) { /* publish an independent view */ }),
+    confy.WithOnError(func(err error) { /* observe a rejected update */ }),
+)
+if err != nil { return err }
+defer cfg.Close()
+var app AppConfig
+if err := cfg.BindWithDefaults(&app); err != nil { return err }
+return cfg.Validate() // initial business validation remains explicit
+```
+
+- Default loading still uses local files. Remote mode needs no local directory. Explicit `WithPath`, `WithFile`, `WithLoadAll` (including false) or `WithFileType` conflict with `WithProvider`; duplicate/nil providers return `ErrInvalidOptions`.
+- Priority is provider content, then nonempty ENV, then explicit `cfg.Set`. Put empty placeholder keys in remote documents for ENV-only fields; unknown ENV keys are not automatically discovered. Load credentials from ENV **before** constructing the provider; Confy dotenv loading cannot reevaluate already collected options.
+- Watching starts after the first complete successful binding. Registration failure is returned and may be retried by binding again. One remote target is supported; a different target returns `ErrBoundTarget`.
+- Remote updates decode into a fresh target, apply the original defaults rules, run a side-effect-free `Validator`, and commit only on success. Deleted fields disappear. Parse/decryption/validation errors, blank documents and deleted Data IDs preserve the last valid state. Initial Bind does not automatically call `Validator`.
+- Callbacks run outside internal locks and can call Get/Set/Bind/Close. Direct concurrent reads of the auto-updated target require application synchronization. For servers, decode an independent copy from `Snapshot` in OnChange and atomically publish it; the Gin example demonstrates this. Internal locking does not protect application reads of the target.
+- `Close` is idempotent, releases subscriptions/client/cache and allows Get of the last state. Closed Set is a no-op; Bind/Restore return `ErrClosed`. A provider belongs to one Config. SDK operations use SDK timeouts; Context cannot interrupt an already-running SDK request.
+- Remote Confy ciphertext requires `WithEncryption("aes-gcm", key)`. Keep the key outside Nacos. ENV secrets and decrypted fields are never written back to Nacos or the SDK source cache. Snapshot and Export can contain plaintext.
+
+See [adapter security and lifecycle details](provider/nacos/README.md) for cache/logging behavior and [verification evidence](tasks/verification.md) for tested capabilities and remaining environment limits.
+
 ## Example
 
 A complete Gin + confy demo is available in the `example/` directory:
