@@ -2,7 +2,6 @@ package e2e_test
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,11 +16,7 @@ func TestE2ELocalProvider(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, content string) {
 		t.Helper()
-		// Exercise native in-place file writes. Atomic replacement may produce a
-		// Remove event on macOS, which ends Viper's native watcher.
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
+		writeWatchedFile(t, filepath.Join(dir, name), content)
 	}
 	write("base.yaml", "server:\n  port: 8080\n")
 	write("config.yaml", "base: base.yaml\nname: initial\nremoved: old\ntimeout: 0\nenabled: false\n")
@@ -72,7 +67,7 @@ func TestE2ELocalProvider(t *testing.T) {
 		t.Fatal("invalid local update was not reported")
 	}
 	if cfg.Get("name") != "updated" {
-		t.Fatal("invalid document changed Viper")
+		t.Fatalf("invalid document changed Viper: name=%#v", cfg.Get("name"))
 	}
 	p.ConfigMutex().RLock()
 	unchanged := target.Name == "updated"
@@ -108,9 +103,7 @@ func TestE2ELocalMixedFormatWatch(t *testing.T) {
 			dir := t.TempDir()
 			write := func(name, content string) {
 				t.Helper()
-				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
-					t.Fatal(err)
-				}
+				writeWatchedFile(t, filepath.Join(dir, name), content)
 			}
 			write(tc.parentName, tc.parent)
 			write(tc.childName, tc.child)

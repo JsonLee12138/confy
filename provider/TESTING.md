@@ -58,3 +58,5 @@ public Namespace（空 namespace ID）、`CONFY_EXAMPLES` Group 中保留三份�
 - Local 使用 Viper 原生监听：本次 macOS 原子替换文件的尝试未触发预期更新；原位写入全部通过。Viper 收到 Remove 后会结束监听，当前不承诺删除重建或所有原子保存方式都能持续监听，详见 [开发规则](../AGENTS.md#provider-adapter-development)。
 - ENV 没有变更通知；修改环境变量后需主动重新 Bind。
 - 不保证每个中间 Nacos 版本都交付，测试等待指定最终版本；错误通知没有版本号，不能把任意下一条错误视作最新发布的处理完成证明。
+
+Linux CI 的 Local 监听夹具使用固定大小、单次原位写入，避免 os.WriteFile 截断与写入之间被读到空文档。无效配置保留旧源及目标的断言保持不变；不额外承诺抑制任意编辑器产生的中间状态。
