@@ -1,6 +1,6 @@
 # Nacos 读取示例
 
-原 `example/main.go` 保持原样。本目录提供独立程序，只读取配置，不发布或写回 Nacos；仅使用 Confy 的 BindWithDefaults/Validate/WithEnvPrefix API。
+原 `example/main.go` 保持原样。本目录提供独立程序，只读取配置，不发布或写回 Nacos；仅使用 Confy 的 Bind/Validate/WithEnvPrefix API。
 
 在 Nacos 中准备 `app.yaml`（默认 DEFAULT_GROUP、public Namespace）：
 

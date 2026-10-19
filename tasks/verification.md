@@ -1,3 +1,5 @@
+> 历史验收快照：其中候选事务、独立 Viper 和旧代码行号不代表当前实现。共享 Viper 行为与验证见 [现行契约](../provider/README.md) 和 [Provider 验证记录](../provider/TESTING.md)。
+
 # Local / Nacos 实施与验收记录
 
 > 历史记录：以下实现快照对应调整前的提交 `97e91ee`。后续用户要求的 core 契约、Provider 分派和独立 Nacos 示例以 [本轮调整记录](refinement.md) 为准；下文关于旧 Gin 示例副本发布的描述已被撤回。

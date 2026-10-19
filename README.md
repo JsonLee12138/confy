@@ -1,48 +1,46 @@
 # Confy
 
-A full-scenario Go configuration management library built on [viper](https://github.com/spf13/viper).
+[English](README.md) | [Chinese documentation](README.zh.md)
 
-## Features
+Confy is a Go configuration library built on Viper. Load local files, Nacos configuration, or environment variables into structs through the same binding API. It supports YAML, JSON, TOML, default values, explicit validation, encrypted fields, and configuration updates.
 
-- **Environment-aware multi-file merging** — auto-discovers `config.yaml` → `config.local.yaml` → `config.{env}.yaml` → `config.{env}.local.yaml`
-- **Environment variable override** — `database.host` ↔ `MYAPP_DATABASE_HOST`
-- **Multi-format support** — YAML, JSON, TOML (mixed in same directory)
-- **.env file loading** — environment-aware `.env` discovery: `.env` → `.env.local` → `.env.{env}` → `.env.{env}.local`
-- **Hot-reload** — file watching with fsnotify for development
-- **Struct binding** — unmarshal to Go structs with `mapstructure` tags
-- **Struct defaults** — `default:"value"` tag support via `creasty/defaults`
-- **Validation** — custom `Validator` interface + `required:"true"` tag
-- **Config encryption** — AES-256-GCM for sensitive values
-- **Template inheritance** — `base: parent.yaml` for config inheritance
-- **Snapshot/Restore** — capture and rollback config state
-- **Functional options** — clean, extensible API
+## Usage
 
-## Install
+### Installation
 
-```bash
+Requires Go 1.23 or later.
+
+```sh
 go get github.com/JsonLee12138/confy@latest
 ```
 
-## Quick Start
+### Quick start
+
+Create `config/config.yaml`:
+
+```yaml
+server:
+  host: 127.0.0.1
+  port: 8080
+```
+
+Create `main.go`:
 
 ```go
 package main
 
 import (
     "fmt"
+    "log"
+
     "github.com/JsonLee12138/confy"
 )
 
 type AppConfig struct {
     Server struct {
-        Port int    `mapstructure:"port"`
-        Host string `mapstructure:"host"`
+        Host string `mapstructure:"host" default:"127.0.0.1"`
+        Port int    `mapstructure:"port" default:"8080"`
     } `mapstructure:"server"`
-    Database struct {
-        Host     string `mapstructure:"host"`
-        Port     int    `mapstructure:"port"`
-        Password string `mapstructure:"password"`
-    } `mapstructure:"database"`
 }
 
 func main() {
@@ -51,126 +49,61 @@ func main() {
         confy.WithEnvPrefix("MYAPP"),
     )
     if err != nil {
-        panic(err)
+        log.Fatal(err)
     }
+    defer cfg.Close()
 
-    var appCfg AppConfig
-    if err := cfg.BindWithDefaults(&appCfg); err != nil {
-        panic(err)
+    var app AppConfig
+    if err := cfg.Bind(&app); err != nil {
+        log.Fatal(err)
     }
-
-    fmt.Printf("Server: %s:%d\n", appCfg.Server.Host, appCfg.Server.Port)
+    fmt.Printf("server=%s:%d\n", app.Server.Host, app.Server.Port)
 }
 ```
 
-## Configuration Files
+Run `go run .`, or override the port with `MYAPP_SERVER_PORT=9090 go run .`.
 
-Place config files in the `config/` directory:
+`Bind` applies `default` tags before decoding, preserving configured `0`, `false`, and empty strings. Each bind replaces the target from a fresh struct; failed decoding leaves the target unchanged. Move initial field values into default tags or configuration. Optional nested struct pointers need `default:"{}"` to initialize their defaults. `BindWithDefaults` is deprecated; use `Bind`.
 
-```
-config/
-├── config.yaml              # Base config
-├── config.local.yaml        # Local overrides (git-ignored)
-├── config.production.yaml   # Production overrides
-├── database.yaml            # Module config (loaded with LoadAll)
-```
+### Choose a Provider
 
-### File Priority (highest last)
+| Source | Setup | Updates |
+| --- | --- | --- |
+| Local | Default, or `local.New(...)` | Native file watching |
+| Nacos | `nacos.New(...)` | Remote subscription and reconciliation |
+| ENV | `env.New(schema, prefix)` | Explicit rebinding; no watcher |
 
-1. `config.yaml`
-2. `config.local.yaml`
-3. `config.{env}.yaml`
-4. `config.{env}.local.yaml`
+**Local files**
 
-Environment is detected via `GO_ENV_MODE` env var (`development`/`production`/`test`).
-
-## Options
-
-| Option | Description |
-|--------|-------------|
-| `WithPath(path)` | Config directory path |
-| `WithFile(name)` | Base config file name |
-| `WithFileType(ft)` | Default format: `confy.YAML`, `confy.JSON`, `confy.TOML` |
-| `WithEnvPrefix(prefix)` | Env var prefix |
-| `WithWatch(enable)` | Enable hot-reload |
-| `WithOnChange(fn)` | Callback on config change |
-| `WithLoadAll(enable)` | Load all files in directory |
-| `WithDotEnv(path)` | Load a `.env` file |
-| `WithDotEnvAuto(dir...)` | Auto-discover `.env` files by env mode |
-| `WithEncryption(algo, key)` | Enable value encryption |
-
-## .env Files
-
-Two ways to load `.env` files:
-
-### Manual — `WithDotEnv(path)`
-
-Load specific `.env` files by path:
+The quick start uses the default Local Provider. To select it explicitly:
 
 ```go
-confy.New(
-    confy.WithDotEnv(".env"),
-    confy.WithDotEnv(".env.local"),
-)
+import "github.com/JsonLee12138/confy/provider/local"
+
+cfg, err := confy.New(confy.WithProvider(local.New(
+    local.WithPath("config"),
+    local.WithFile("config"),
+    local.WithFileType(confy.YAML),
+    local.WithLoadAll(false),
+)))
 ```
 
-### Auto-discovery — `WithDotEnvAuto(dir...)`
+Local files merge in this order, with later files taking priority:
 
-Automatically discovers and loads `.env` files based on `GO_ENV_MODE`, following the same priority pattern as config files:
-
-```go
-confy.New(confy.WithDotEnvAuto())      // search in current directory
-confy.New(confy.WithDotEnvAuto("etc")) // search in "etc/" directory
+```text
+config.yaml -> config.local.yaml -> config.{env}.yaml -> config.{env}.local.yaml
 ```
 
-#### .env File Priority (highest last)
+Set `GO_ENV_MODE` to select `development`, `production`, or `test`. Local loading also supports environment aliases and mixed YAML, JSON, and TOML files. `WithLoadAll(true)` discovers other configuration files in the directory. A local file can inherit another file with `base: base.yaml`; child values override inherited values.
 
-1. `.env`
-2. `.env.local`
-3. `.env.{env}`
-4. `.env.{env}.local`
+**Nacos**
 
-When `GO_ENV_MODE=production`, the discovery order is:
-
-```
-.env → .env.local → .env.production → .env.production.local
-```
-
-Environment aliases are supported: `dev`/`development`, `prod`/`pro`/`production`, `test`/`testing`.
-
-Files that don't exist are silently skipped. System environment variables always take highest priority.
-
-## Encrypted Values
-
-Mark encrypted values with `enc:AES_GCM:` prefix:
-
-```yaml
-database:
-  password: "enc:AES_GCM:base64EncodedCiphertext"
-```
-
-## Template Inheritance
-
-```yaml
-# base.yaml
-server:
-  port: 8080
-  host: 0.0.0.0
-
-# config.yaml
-base: base.yaml
-server:
-  port: 9090  # overrides parent
-```
-
-## Nacos provider
-
-Use the official SDK adapter in the same module:
+Use the same `AppConfig` and `Bind` call from the quick start:
 
 ```go
 import (
     "os"
-    "github.com/JsonLee12138/confy"
+
     "github.com/JsonLee12138/confy/provider/nacos"
     "github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 )
@@ -179,59 +112,124 @@ cfg, err := confy.New(
     confy.WithProvider(nacos.New(
         nacos.WithServers([]constant.ServerConfig{{IpAddr: "127.0.0.1", Port: 8848}}),
         nacos.WithClientConfig(constant.ClientConfig{
-            NamespaceId: "", // public; use a namespace ID for other namespaces
-            Username: os.Getenv("NACOS_USERNAME"),
-            Password: os.Getenv("NACOS_PASSWORD"),
-            TimeoutMs: 5000,
+            NamespaceId: "", // Public namespace; otherwise use the namespace ID.
+            Username:    os.Getenv("NACOS_USERNAME"),
+            Password:    os.Getenv("NACOS_PASSWORD"),
+            TimeoutMs:   5000,
         }),
         nacos.WithDataID("app.yaml"),
         nacos.WithGroup("APP_GROUP"),
-        nacos.WithFormat(confy.YAML), // JSON and TOML also supported
+        nacos.WithFormat(confy.YAML),
     )),
     confy.WithEnvPrefix("MYAPP"),
 )
-if err != nil { return err }
-defer cfg.Close()
-var app AppConfig
-if err := cfg.BindWithDefaults(&app); err != nil { return err }
-return cfg.Validate() // initial business validation remains explicit
 ```
 
-- Default loading still uses local files. Remote mode needs no local directory. Explicit `WithPath`, `WithFile`, `WithLoadAll` (including false) or `WithFileType` conflict with `WithProvider`; duplicate/nil providers return `ErrInvalidOptions`.
-- Priority is provider content, then nonempty ENV, then explicit `cfg.Set`. Put empty placeholder keys in remote documents for ENV-only fields; unknown ENV keys are not automatically discovered. Load credentials from ENV **before** constructing the provider; Confy dotenv loading cannot reevaluate already collected options.
-- Watching starts after the first complete successful binding. Registration failure is returned and may be retried by binding again. One remote target is supported; a different target returns `ErrBoundTarget`.
-- Remote updates decode into a fresh target, apply the original defaults rules, run a side-effect-free `Validator`, and commit only on success. Deleted fields disappear. Parse/decryption/validation errors, blank documents and deleted Data IDs preserve the last valid state. Initial Bind does not automatically call `Validator`.
-- Callbacks run outside internal locks and can call Get/Set/Bind/Close. Direct concurrent reads of the auto-updated target require application synchronization. Internal locking does not protect application reads of the target. The standalone Nacos reading example does not enable watching.
-- `Close` is idempotent, releases subscriptions/client/cache and allows Get of the last state. Closed Set is a no-op; Bind/Restore return `ErrClosed`. A provider belongs to one Config. SDK operations use SDK timeouts; Context cannot interrupt an already-running SDK request.
-- Remote Confy ciphertext requires `WithEncryption("aes-gcm", key)`. Keep the key outside Nacos. ENV secrets and decrypted fields are never written back to Nacos or the SDK source cache. Snapshot and Export can contain plaintext.
+Handle `err`, defer `cfg.Close()`, then call `cfg.Bind(&app)`. No local configuration directory is needed. YAML is the default format; use `WithFormat(confy.JSON)` or `WithFormat(confy.TOML)` explicitly for other formats. The Data ID extension does not select the parser.
 
-Provider/Watcher/Change/Event/FileType contracts live in [`core/`](core/). Both LocalProvider and NacosProvider implement `core.Provider` (`Type` + `Load`) and `core.WatchProvider`. The shared coordinator selects binding rules with a switch on `core.ProviderType`; it does not infer that every non-local provider is Nacos. Root-package aliases preserve existing `confy.Event`, `confy.FileType`, and option usage. Custom Provider implementations must explicitly implement `Type()`.
+Inject connection credentials before constructing the Provider. Confy's dotenv loading cannot update options already collected by `nacos.New`. See the [Nacos guide](provider/nacos/README.md) for cache, logging, authentication, and transport details.
 
-The original `example/main.go` remains unchanged. Run the independent read-only Nacos example with `cd example && go run ./nacos`; see [its ENV override instructions](example/nacos/README.md). Neither example imports Viper/defaults or publishes configuration to Nacos.
+**Environment variables**
 
-See [adapter security and lifecycle details](provider/nacos/README.md) for cache/logging behavior and [verification evidence](tasks/verification.md) for tested capabilities and remaining environment limits.
+For bootstrap settings, bind ENV directly without loading files:
 
-## Example
-
-A complete Gin + confy demo is available in the `example/` directory:
-
-```bash
-cd example
-go run .
+```go
+var connection struct {
+    Address string `mapstructure:"address"`
+    Port    int    `mapstructure:"port"`
+}
+// Reads NACOS_ADDRESS and NACOS_PORT; use "" for no prefix.
+err := confy.BindEnv(&connection, "NACOS")
 ```
 
-The example demonstrates:
-- **Multi-file merging** — `config.yaml` + `config.local.yaml`
-- **Template inheritance** — `config.yaml` extends `base.yaml`
-- **Hot-reload** — config changes trigger automatic rebind
-- **Struct defaults** — Go struct `default` tags fill in missing values
-- **Validation** — `App.Validate()` enforces port ranges
-- **Env var overrides** — set `MYAPP_SERVER_PORT=9090` to override
+Direct `BindEnv` does not apply defaults or business validation. Missing or empty variables produce zero values; errors leave the instance unchanged.
 
-Endpoints:
-- `GET /health` — health check
-- `GET /config` — view current config (password masked)
+To use ENV through the regular Config API:
+
+```go
+import "github.com/JsonLee12138/confy/provider/env"
+
+cfg, err := confy.New(confy.WithProvider(env.New(AppConfig{}, "MYAPP")))
+// After checking err: defer cfg.Close(), then cfg.Bind(&app).
+```
+
+This path applies the usual `Bind` defaults and decryption rules. ENV keys come from the struct schema, including nested fields. ENV has no watcher; call `Bind` again to read changed variables. See the [ENV guide](provider/env/README.md) for supported schemas.
+
+### Environment overrides and dotenv
+
+For Local and Nacos, `server.port` maps to `MYAPP_SERVER_PORT` when using `WithEnvPrefix("MYAPP")`. Effective priority, from low to high, is source content, nonempty ENV, then explicit `cfg.Set`. ENV-only fields in file/remote configuration need declared placeholder keys; unrelated process variables are not discovered automatically.
+
+Load dotenv files while creating Config:
+
+```go
+confy.New(confy.WithDotEnv(".env"))
+confy.New(confy.WithDotEnvAuto())      // Current directory.
+confy.New(confy.WithDotEnvAuto("etc")) // Specific directory.
+```
+
+Automatic discovery uses `.env`, `.env.local`, `.env.{env}`, and `.env.{env}.local`, including supported environment aliases. Missing files are skipped. Existing nonempty process variables are preserved; dotenv fills variables only while their current value is empty.
+
+### Watching and validation
+
+Enable watching on Local or Nacos when creating Config:
+
+```go
+confy.WithWatch(true),
+confy.WithOnChange(func(event confy.Event) {
+    // The bound target has been updated successfully.
+}),
+confy.WithOnError(func(err error) {
+    // Handle refresh or binding errors.
+}),
+```
+
+Watching starts after the first successful bind. Further binds do not add subscriptions: automatic updates keep targeting the first watched instance, while `Validate` checks the most recently bound instance. Synchronize application reads of any target being updated in the background. Callbacks run outside internal locks.
+
+Business validation is explicit. Implement `Validate() error` on your struct and call `cfg.Validate()` after binding or when handling an update. `Bind` does not invoke it automatically. `ValidateType(&app)` separately checks top-level `required:"true"` fields and type compatibility.
+
+Parse errors preserve the previous source. Binding or decryption errors preserve the previous target, while `Get` can expose the latest parseable source. `Close` stops delivery and releases supported Provider resources. Local watches the first selected file; changes to inherited files alone may not trigger a reload. Native Viper watching can stop after file removal or some atomic replacements on macOS; its native watcher remains process-scoped.
+
+### Other APIs and options
+
+Use `cfg.Get(key)` and `cfg.Set(key, value)` to read and override values. `Snapshot()` returns a settings map; `Restore(snapshot)` applies it as overrides, and `Export(path)` writes configuration to a file. Restore and Set do not automatically rebind the struct; call `Bind` when needed.
+
+Encrypted fields use the `enc:AES_GCM:` prefix and require `WithEncryption("aes-gcm", key)`. Decryption happens during binding; source ciphertext remains in shared configuration. ENV values, snapshots, and exports can contain plaintext.
+
+| Option | Purpose |
+| --- | --- |
+| `WithPath`, `WithFile`, `WithFileType`, `WithLoadAll` | Configure default Local loading |
+| `WithProvider` | Select an explicit Local, Nacos, ENV, or custom source |
+| `WithEnvPrefix` | Set the ENV override prefix |
+| `WithDotEnv`, `WithDotEnvAuto` | Load dotenv files |
+| `WithWatch`, `WithOnChange`, `WithOnError` | Configure updates and error handling |
+| `WithEncryption` | Enable field decryption |
+
+Select one source per Config. Explicit `WithProvider` conflicts with root Local options, including `WithLoadAll(false)`; configure that source through its own package options instead. Common errors are available as `confy.ErrXXX`; use `errors.Is` to check them. Direct ENV errors include `ErrEnvSchema`, `ErrEnvTarget`, and `ErrEnvDecode`.
+
+### Runnable examples
+
+From `example/`:
+
+```sh
+go run ./local
+MYAPP_SERVER_HOST=127.0.0.1 MYAPP_SERVER_PORT=9090 go run ./env
+NACOS_SERVER_ADDR=127.0.0.1:8848 NACOS_GROUP=APP_GROUP NACOS_DATA_ID=app.yaml go run ./nacos
+```
+
+For Nacos, prepare the configuration and export credentials first. See [example instructions](example/README.md). The original Gin demo remains available with `go run .`.
+
+## Development
+
+New adapters belong in `provider/<source>` and implement `provider.Provider`. Watching adapters also implement `provider.WatchProvider`: refresh the same shared Viper, release the shared lock, then notify Bind. Detailed contracts and development rules are in [AGENTS.md](AGENTS.md#provider-adapter-development).
+
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+```
+
+Local/ENV E2E tests are part of the root suite. Real Nacos tests require explicit connection settings and the `nacos_integration` build tag; see [test instructions and results](provider/TESTING.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
