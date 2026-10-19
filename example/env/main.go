@@ -16,6 +16,7 @@ type App struct {
 	} `mapstructure:"server"`
 }
 
+// main demonstrates direct ENV bootstrap binding and the ENV Provider Config path.
 func main() {
 	// Direct binding is useful for connection settings before creating a Provider.
 	var bootstrap App

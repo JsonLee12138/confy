@@ -30,7 +30,7 @@ type sdkClient interface {
 }
 
 // Provider owns its SDK client and private, ephemeral SDK cache directory.
-// New prepares options and the shared Viper. Network access begins in Load.
+// New prepares options and the shared Viper. Load or Watch initializes the SDK.
 type Provider struct {
 	loadMu    sync.Mutex
 	configMu  sync.RWMutex
@@ -46,7 +46,9 @@ type Provider struct {
 
 var quietSDK sync.Once
 
-// New creates a single-Data-ID provider. A provider belongs to one core.Config.
+// New creates a single-Data-ID Provider for one Confy Config.
+// It defaults to YAML and DEFAULT_GROUP; validation and SDK initialization are deferred
+// until Load or Watch.
 func New(opts ...Option) *Provider {
 	o := options{format: core.YAML, group: "DEFAULT_GROUP"}
 	for _, opt := range opts {
@@ -59,9 +61,13 @@ func New(opts ...Option) *Provider {
 	v.SetConfigType(string(o.format))
 	return &Provider{opts: o, v: v, factory: func(param vo.NacosClientParam) (sdkClient, error) { return clients.NewConfigClient(param) }}
 }
+
+// resource identifies the Namespace/Group/Data ID with escaped path components and no credentials.
 func (p *Provider) resource() string {
 	return "nacos://" + url.PathEscape(p.opts.client.NamespaceId) + "/" + url.PathEscape(p.opts.group) + "/" + url.PathEscape(p.opts.dataID)
 }
+
+// safe attaches the source identity to a sentinel error without wrapping SDK errors or raw content.
 func (p *Provider) safe(err error) error { return fmt.Errorf("%w: %s", err, p.resource()) }
 
 // ConfigMutex synchronizes source updates with Confy reads and binding.

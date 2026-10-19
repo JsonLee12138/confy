@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestResolveBaseInheritance checks child overrides while retaining unrelated parent fields.
 func TestResolveBaseInheritance(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "base.yaml", "server:\n  port: 8080\n  host: 0.0.0.0\ndatabase:\n  host: localhost")
@@ -27,6 +28,7 @@ func TestResolveBaseInheritance(t *testing.T) {
 	}
 }
 
+// TestResolveBaseInheritance_Chain checks precedence through three inherited documents.
 func TestResolveBaseInheritance_Chain(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "root.yaml", "name: root\nlevel: 1")
@@ -46,6 +48,7 @@ func TestResolveBaseInheritance_Chain(t *testing.T) {
 	}
 }
 
+// TestResolveBaseInheritance_Cycle ensures a repeated ancestor returns an error instead of recursing.
 func TestResolveBaseInheritance_Cycle(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "a.yaml", "base: b.yaml")
@@ -57,6 +60,7 @@ func TestResolveBaseInheritance_Cycle(t *testing.T) {
 	}
 }
 
+// TestResolveBaseInheritance_NoBase preserves a standalone document without inheritance.
 func TestResolveBaseInheritance_NoBase(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "config.yaml", "name: test\nport: 8080")
@@ -71,6 +75,7 @@ func TestResolveBaseInheritance_NoBase(t *testing.T) {
 	}
 }
 
+// TestMergeConfig checks that child values win without dropping unrelated parent keys.
 func TestMergeConfig(t *testing.T) {
 	base := map[string]any{
 		"server.port": 8080,
@@ -95,6 +100,7 @@ func TestMergeConfig(t *testing.T) {
 	}
 }
 
+// writeFile creates a named configuration fixture and fails the calling test on write errors.
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
@@ -102,6 +108,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 	}
 }
 
+// TestResolveBaseInheritanceMixedFormats checks extension-selected parsing across inherited
+// formats, YML input, and configured-type fallback for an extensionless document.
 func TestResolveBaseInheritanceMixedFormats(t *testing.T) {
 	for _, tc := range []struct {
 		name, childName, child, parentName, parent string

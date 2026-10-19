@@ -11,6 +11,8 @@ import (
 	"github.com/JsonLee12138/confy/provider/local"
 )
 
+// TestE2ELocalProvider exercises real file reloads, inheritance, ENV/Set precedence,
+// failed-document preservation, recovery, and closed-Config behavior.
 func TestE2ELocalProvider(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, content string) {
@@ -91,6 +93,8 @@ func TestE2ELocalProvider(t *testing.T) {
 	t.Log("real files: inheritance, ENV/Set precedence, zero/default/delete, watch, invalid document, recovery, Close passed")
 }
 
+// TestE2ELocalMixedFormatWatch checks mixed YAML/TOML inheritance during initial binding
+// and automatic rebinds, including a TOML file discovered with the default YAML preference.
 func TestE2ELocalMixedFormatWatch(t *testing.T) {
 	for _, tc := range []struct {
 		name, parentName, parent, childName, child, updated string

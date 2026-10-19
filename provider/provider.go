@@ -61,6 +61,7 @@ const (
 	ProviderCustom ProviderType = "custom"
 )
 
+// IsNilProvider detects both nil interfaces and typed nil values before calling a Provider.
 func IsNilProvider(p Provider) bool {
 	if p == nil {
 		return true

@@ -9,8 +9,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-// resolveBaseInheritance resolves the "base" field inheritance chain.
-// It loads parent configs, merges them, and returns the final flat map.
+// ResolveBaseInheritance loads local base inheritance into a flat settings map.
+// Supported file extensions select the parser; fileType is the fallback. Child
+// keys override parent keys, the base directive is removed, and visited tracks
+// ancestors so cycles fail before recursive loading.
 func ResolveBaseInheritance(path string, fileType FileType, visited map[string]bool) (map[string]any, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {

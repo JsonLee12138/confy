@@ -29,6 +29,7 @@ type configOptions struct {
 	// local.Options
 }
 
+// LocalOption copies root Local settings into the default Provider, including LoadAll=false.
 func (o *configOptions) LocalOption() local.Option {
 	return func(target *local.Options) {
 		target.BasePath = o.basePath
@@ -38,6 +39,7 @@ func (o *configOptions) LocalOption() local.Option {
 	}
 }
 
+// defaultOptions selects CONFIG_PATH or config, YAML input, and disabled watching and LoadAll.
 func defaultOptions() *configOptions {
 	basePath := os.Getenv("CONFIG_PATH")
 	if basePath == "" {
@@ -68,7 +70,8 @@ func WithFile(name string) Option {
 	}
 }
 
-// WithFileType sets the default config file format.
+// WithFileType sets the preferred format for default Local file discovery.
+// Each recognized file extension still selects its own parser.
 func WithFileType(ft FileType) Option {
 	return func(o *configOptions) {
 		o.localExplicit = true
@@ -83,14 +86,16 @@ func WithEnvPrefix(prefix string) Option {
 	}
 }
 
-// WithWatch enables or disables file watching for hot-reload.
+// WithWatch enables Provider updates after the first successful binding.
+// A source without WatchProvider support causes Bind to return ErrWatchUnsupported.
 func WithWatch(enable bool) Option {
 	return func(o *configOptions) {
 		o.watchable = enable
 	}
 }
 
-// WithOnChange sets the callback for config file changes.
+// WithOnChange runs after a source update has been successfully rebound.
+// It runs outside Config locks; the application must synchronize concurrent target reads.
 func WithOnChange(fn func(Event)) Option {
 	return func(o *configOptions) {
 		o.onChange = fn
@@ -133,7 +138,9 @@ func WithEncryption(algo string, key []byte) Option {
 	}
 }
 
-// WithProvider selects a single configuration source instead of local files.
+// WithProvider selects one configuration source instead of default Local loading.
+// A nil source, repeated selection, or combination with root Local options makes
+// New return ErrInvalidOptions. Config closes sources implementing io.Closer.
 func WithProvider(p provider.Provider) Option {
 	return func(o *configOptions) { o.providerCount++; o.provider = p }
 }

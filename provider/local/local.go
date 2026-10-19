@@ -12,6 +12,8 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// Provider merges local file variants and base inheritance into one shared Viper.
+// Its watcher refreshes that source before notifying Config binding.
 type Provider struct {
 	loadMu   sync.Mutex
 	configMu sync.RWMutex
@@ -20,6 +22,8 @@ type Provider struct {
 	watcher  *Watcher
 }
 
+// New collects Local options without reading files; loading begins in Load.
+// Direct construction defaults to LoadAll=true; root confy.New supplies its own Local settings.
 func New(opts ...Option) *Provider {
 	o := DefaultOptions()
 	for _, opt := range opts {
@@ -32,6 +36,7 @@ func New(opts ...Option) *Provider {
 	}
 }
 
+// Type identifies this source as local configuration files.
 func (*Provider) Type() provider.ProviderType {
 	return provider.ProviderLocal
 }

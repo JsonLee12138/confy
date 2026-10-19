@@ -91,6 +91,8 @@ func getAllConfigFilePaths(opts *Options) []string {
 	return configFiles
 }
 
+// getConfigBaseNames finds distinct configuration base names across supported file formats.
+// Environment and local suffixes are removed; unreadable directories produce no names.
 func getConfigBaseNames(basePath string, fileType core.FileType) []string {
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
@@ -122,11 +124,13 @@ func getConfigBaseNames(basePath string, fileType core.FileType) []string {
 	return names
 }
 
+// stripConfigSuffix removes local and environment suffixes before grouping file variants.
 func stripConfigSuffix(name string) string {
 	name = strings.TrimSuffix(name, ".local")
 	return trimEnvSuffix(name)
 }
 
+// trimEnvSuffix removes one recognized environment suffix without changing the base name.
 func trimEnvSuffix(name string) string {
 	suffixes := []string{".dev", ".development", ".pro", ".prod", ".production", ".test"}
 	for _, s := range suffixes {
@@ -137,6 +141,7 @@ func trimEnvSuffix(name string) string {
 	return name
 }
 
+// moveConfigFirst places the conventional config base before other names, preserving their order.
 func moveConfigFirst(names []string) []string {
 	idx := -1
 	for i, name := range names {
@@ -155,6 +160,7 @@ func moveConfigFirst(names []string) []string {
 	return out
 }
 
+// supportedExtensions puts the preferred format first when selecting one file per name variant.
 func supportedExtensions(defaultType core.FileType) []string {
 	switch defaultType {
 	case core.JSON:
@@ -166,11 +172,13 @@ func supportedExtensions(defaultType core.FileType) []string {
 	}
 }
 
+// isSupportedExt accepts YAML, YML, JSON, and TOML extensions, with or without a leading dot.
 func isSupportedExt(ext string) bool {
 	ext = strings.TrimPrefix(ext, ".")
 	return ext == "yaml" || ext == "yml" || ext == "json" || ext == "toml"
 }
 
+// deduplicate keeps the first occurrence of each name and reuses the input slice storage.
 func deduplicate(ss []string) []string {
 	seen := make(map[string]struct{}, len(ss))
 	out := ss[:0]

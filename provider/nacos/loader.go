@@ -65,6 +65,7 @@ func (p *Provider) writeConfig(ctx context.Context, content string) error {
 // or creating a second Viper for each update.
 type documentDecoders struct{ viper.DecoderRegistry }
 
+// Decoder wraps the registered format decoder with nonempty-document validation.
 func (r documentDecoders) Decoder(format string) (viper.Decoder, error) {
 	decoder, err := r.DecoderRegistry.Decoder(format)
 	if err != nil {
@@ -75,6 +76,7 @@ func (r documentDecoders) Decoder(format string) (viper.Decoder, error) {
 
 type documentDecoder struct{ viper.Decoder }
 
+// Decode parses once and rejects an empty document before Viper replaces its source map.
 func (d documentDecoder) Decode(content []byte, config map[string]any) error {
 	if err := d.Decoder.Decode(content, config); err != nil {
 		return err
@@ -85,6 +87,9 @@ func (d documentDecoder) Decode(content []byte, config map[string]any) error {
 	return nil
 }
 
+// initializeLocked validates options and creates one owned SDK client and private cache.
+// The caller holds p.mu. Initialization failures remove owned files; the SDK logger
+// is silenced process-wide to prevent logging configuration content.
 func (p *Provider) initializeLocked() error {
 	if p.closed {
 		return core.ErrClosed
@@ -151,6 +156,9 @@ func (p *Provider) initializeLocked() error {
 	return nil
 }
 
+// readLocked fetches the current document while the caller holds p.mu.
+// It checks cancellation before and after the SDK request, whose timeout bounds
+// in-flight work, and converts SDK failures into errors without source content.
 func (p *Provider) readLocked(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

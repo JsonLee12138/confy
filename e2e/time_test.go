@@ -20,6 +20,8 @@ type timeSettings struct {
 	Ports     []int                   `mapstructure:"ports"`
 }
 
+// TestE2EEnvTimeBinding checks RFC3339 time values and pointers through both ENV entry points,
+// preserving duration/slice decoding and the previous target after invalid timestamps.
 func TestE2EEnvTimeBinding(t *testing.T) {
 	stamp := "2026-10-19T06:00:00.123456789Z"
 	want, err := time.Parse(time.RFC3339Nano, stamp)

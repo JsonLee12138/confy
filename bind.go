@@ -91,6 +91,8 @@ func (c *Config) bind(instance any) error {
 	return nil
 }
 
+// bindingError reports a phase-only update error without exposing configuration values.
+// It suppresses delivery after Close and invokes the error callback outside the lock.
 func (c *Config) bindingError(stage string) {
 	c.mu.RLock()
 	fn, closed := c.opts.onError, c.closed

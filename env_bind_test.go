@@ -10,6 +10,8 @@ import (
 	"github.com/JsonLee12138/confy/provider/env"
 )
 
+// TestBindEnvPublicEntry checks the root ENV API, Provider type aliases, safe errors,
+// and target preservation when decoding fails.
 func TestBindEnvPublicEntry(t *testing.T) {
 	t.Setenv("CONFY_PUBLIC_PORT", "8848")
 	var target struct {
@@ -41,6 +43,7 @@ func TestBindEnvPublicEntry(t *testing.T) {
 	}
 }
 
+// TestPublicErrorsAliasCore requires root sentinel errors to share identity with core errors.
 func TestPublicErrorsAliasCore(t *testing.T) {
 	for _, pair := range [][2]error{
 		{confy.ErrInvalidOptions, core.ErrInvalidOptions},

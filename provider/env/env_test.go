@@ -21,6 +21,7 @@ type envSettings struct {
 	Missing  string `mapstructure:"missing"`
 }
 
+// TestBindEnvOnlyNestedStruct checks nested tagged keys and excludes ignored or missing ENV fields.
 func TestBindEnvOnlyNestedStruct(t *testing.T) {
 	t.Setenv("CONFYENV_SERVER_ADDRESS", "localhost")
 	t.Setenv("CONFYENV_SERVER_PORT", "8848")
@@ -34,6 +35,9 @@ func TestBindEnvOnlyNestedStruct(t *testing.T) {
 		t.Fatal("ENV struct binding mismatch")
 	}
 }
+
+// TestEnvProviderWorksWithoutFiles checks Config binding with no local source
+// and verifies repeated Load calls return independent Viper instances.
 func TestEnvProviderWorksWithoutFiles(t *testing.T) {
 	t.Setenv("CONFYENV_SERVER_PORT", "9848")
 	p := env.New(envSettings{}, "CONFYENV")
@@ -66,6 +70,9 @@ func TestEnvProviderWorksWithoutFiles(t *testing.T) {
 		t.Fatal("Load shared mutable configuration")
 	}
 }
+
+// TestBindEnvFailurePreservesTargetAndHidesValues requires failed decoding to preserve
+// the old target and return a sentinel without including ENV secrets.
 func TestBindEnvFailurePreservesTargetAndHidesValues(t *testing.T) {
 	t.Setenv("CONFYENV_SERVER_PORT", "invalid-test-secret")
 	original := envSettings{Password: "original"}
@@ -82,6 +89,8 @@ func TestBindEnvFailurePreservesTargetAndHidesValues(t *testing.T) {
 		t.Fatal("decode error exposed environment data")
 	}
 }
+
+// TestEnvProviderInvalidSchemaTargetAndCancellation checks invalid inputs and canceled loading.
 func TestEnvProviderInvalidSchemaTargetAndCancellation(t *testing.T) {
 	for _, schema := range []any{nil, 12, map[string]string{}} {
 		if _, err := env.New(schema, "").Load(context.Background()); !errors.Is(err, core.ErrEnvSchema) {
@@ -99,6 +108,8 @@ func TestEnvProviderInvalidSchemaTargetAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestBindEnvSquashAndNestedPointers checks flattened value structs and allocated nested pointers.
 func TestBindEnvSquashAndNestedPointers(t *testing.T) {
 	type Auth struct {
 		Username string `mapstructure:"username"`
@@ -119,6 +130,8 @@ func TestBindEnvSquashAndNestedPointers(t *testing.T) {
 		t.Fatal("pointer/squash binding failed")
 	}
 }
+
+// TestEnvProviderRejectsRecursiveSchema prevents unbounded traversal of self-referential schemas.
 func TestEnvProviderRejectsRecursiveSchema(t *testing.T) {
 	type Recursive struct{ Next *Recursive }
 	if _, err := env.New(Recursive{}, "").Load(context.Background()); !errors.Is(err, core.ErrEnvSchema) {
@@ -126,6 +139,8 @@ func TestEnvProviderRejectsRecursiveSchema(t *testing.T) {
 	}
 }
 
+// TestBindEnvUnprefixedValuesAndEmptyZeroValues checks direct keys, slice conversion,
+// and replacement of preexisting values when ENV is empty.
 func TestBindEnvUnprefixedValuesAndEmptyZeroValues(t *testing.T) {
 	type Settings struct {
 		Enabled bool     `mapstructure:"confy_env_enabled"`
@@ -143,6 +158,8 @@ func TestBindEnvUnprefixedValuesAndEmptyZeroValues(t *testing.T) {
 		t.Fatal("pure ENV values were not decoded")
 	}
 }
+
+// TestEnvProviderRejectsUnsupportedSquashAndRemain rejects pointer squash and dynamic remainder maps.
 func TestEnvProviderRejectsUnsupportedSquashAndRemain(t *testing.T) {
 	type Auth struct{ Username string }
 	for _, schema := range []any{

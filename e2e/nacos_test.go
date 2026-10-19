@@ -33,6 +33,8 @@ type integrationServer struct {
 	server                       constant.ServerConfig
 }
 
+// integrationSettings requires an explicit real-server run and isolated test group.
+// It builds the HTTP/SDK connection settings and obtains a fixture token when credentials exist.
 func integrationSettings(t *testing.T) *integrationServer {
 	t.Helper()
 	if os.Getenv("NACOS_INTEGRATION") != "1" {
@@ -72,6 +74,9 @@ func integrationSettings(t *testing.T) *integrationServer {
 	}
 	return s
 }
+
+// request operates on a fixture Data ID in the selected namespace and group using the login token.
+// It returns the HTTP status and response body for the caller to validate.
 func (s *integrationServer) request(method, id, content string) (int, string, error) {
 	format := strings.TrimPrefix(filepath.Ext(id), ".")
 	if format == "" {
@@ -101,6 +106,8 @@ func (s *integrationServer) request(method, id, content string) (int, string, er
 	data, err := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(data), err
 }
+
+// publish requires the real server to acknowledge a fixture update before the test continues.
 func (s *integrationServer) publish(t *testing.T, id, content string) {
 	t.Helper()
 	status, body, err := s.request(http.MethodPost, id, content)
@@ -108,6 +115,8 @@ func (s *integrationServer) publish(t *testing.T, id, content string) {
 		t.Fatal("isolated fixture publish failed")
 	}
 }
+
+// encryptedFixture creates an AES-GCM configuration value with a fresh random nonce.
 func encryptedFixture(t *testing.T, plain string, key []byte) string {
 	t.Helper()
 	block, err := aes.NewCipher(key)
@@ -137,12 +146,16 @@ type integrationConfig struct {
 	Timeout   int `default:"30"`
 }
 
+// Validate rejects selected fixture values to verify business validation remains explicit.
 func (c *integrationConfig) Validate() error {
 	if c.Port < 0 || c.Name == "invalid-validator" {
 		return fmt.Errorf("rejected")
 	}
 	return nil
 }
+
+// awaitConfig waits for a named bound version, allowing coalesced intermediate updates.
+// The bounded wait fails the test if the real source never converges.
 func awaitConfig(t *testing.T, ch <-chan integrationConfig, name string) integrationConfig {
 	t.Helper()
 	timer := time.NewTimer(60 * time.Second)
@@ -158,6 +171,10 @@ func awaitConfig(t *testing.T, ch <-chan integrationConfig, name string) integra
 		}
 	}
 }
+
+// TestIntegrationRNacosLifecycle exercises real Nacos loading, watch reconciliation,
+// binding failures, explicit validation, deletion, reconnection, and owned-cache cleanup.
+// It creates and deletes only its unique fixture Data ID.
 func TestIntegrationRNacosLifecycle(t *testing.T) {
 	s := integrationSettings(t)
 	id := fmt.Sprintf("confy-integration-%d.yaml", time.Now().UnixNano())
@@ -350,6 +367,7 @@ type disconnectProxy struct {
 	conns    map[net.Conn]struct{}
 }
 
+// newDisconnectProxy forwards a test-owned TCP listener and closes all connections during cleanup.
 func newDisconnectProxy(t *testing.T, target string) *disconnectProxy {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -369,7 +387,11 @@ func newDisconnectProxy(t *testing.T, target string) *disconnectProxy {
 	}()
 	return p
 }
+
+// port returns the dynamically assigned listener port for SDK connection settings.
 func (p *disconnectProxy) port() uint64 { return uint64(p.listener.Addr().(*net.TCPAddr).Port) }
+
+// forward relays one connection unless the proxy is blocked and removes both sockets on exit.
 func (p *disconnectProxy) forward(in net.Conn) {
 	out, err := net.DialTimeout("tcp", p.target, 2*time.Second)
 	if err != nil {
@@ -400,6 +422,8 @@ func (p *disconnectProxy) forward(in net.Conn) {
 	_ = in.Close()
 	<-done
 }
+
+// disconnect toggles acceptance and closes active proxy connections when blocking is enabled.
 func (p *disconnectProxy) disconnect(block bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -411,6 +435,8 @@ func (p *disconnectProxy) disconnect(block bool) {
 	}
 }
 
+// TestIntegrationStrictStartupWithOldCache verifies an unavailable remote cannot start
+// from caller-provided snapshot/failover files and failed startup removes its private cache.
 func TestIntegrationStrictStartupWithOldCache(t *testing.T) {
 	s := integrationSettings(t)
 	parent := t.TempDir()

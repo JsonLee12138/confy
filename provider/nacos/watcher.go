@@ -110,6 +110,9 @@ func (w *watcher) run(onChange func(provider.Change), onError func(error)) {
 		}
 	}
 }
+
+// refresh waits for a notification or consistency timer before reading the latest document.
+// Failed reads shorten the next delay from five seconds to one; cancellation stops waiting.
 func (w *watcher) refresh() error {
 	// ListenConfig owns the subscription. A bounded consistency read also
 	// covers notifications coalesced/lost while the SDK reconnects or refreshes
@@ -132,6 +135,9 @@ func (w *watcher) refresh() error {
 	w.retry = err != nil
 	return err
 }
+
+// stopLocked closes delivery and cancels the SDK listener exactly once.
+// The caller holds provider.mu; cancellation errors are retained for Close.
 func (w *watcher) stopLocked() {
 	w.once.Do(func() {
 		close(w.done)
@@ -140,6 +146,9 @@ func (w *watcher) stopLocked() {
 		}
 	})
 }
+
+// Close stops delivery and releases the subscription idempotently.
+// It does not wait for an in-flight callback, allowing that callback to close its watcher.
 func (w *watcher) Close() error {
 	w.provider.mu.Lock()
 	defer w.provider.mu.Unlock()

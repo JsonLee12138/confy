@@ -9,6 +9,7 @@ import (
 	"github.com/JsonLee12138/confy/provider/local"
 )
 
+// main reads inherited local configuration and applies MYAPP environment overrides.
 func main() {
 	cfg, err := confy.New(
 		confy.WithProvider(local.New(local.WithPath("config"), local.WithFile("config"), local.WithLoadAll(false))),

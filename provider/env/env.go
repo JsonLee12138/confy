@@ -29,6 +29,8 @@ type Provider struct {
 func New(schema any, prefix string) *Provider {
 	return &Provider{schema: reflect.TypeOf(schema), prefix: prefix}
 }
+
+// Type identifies this load-only source as environment variables.
 func (*Provider) Type() provider.ProviderType { return provider.ProviderEnv }
 
 // Load registers declared keys so Viper.Unmarshal can discover pure ENV values.
@@ -76,12 +78,17 @@ func BindEnv(target any, prefix string) error {
 	return nil
 }
 
+// structType unwraps pointer layers so schema validation and leaf detection share one type.
 func structType(t reflect.Type) reflect.Type {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 	return t
 }
+
+// bindStructEnv registers schema leaves as Viper ENV keys using dot-separated paths.
+// It tracks the current ancestry to reject recursion, supports value squash, and
+// keeps time.Time as a leaf instead of traversing its unexported representation.
 func bindStructEnv(ctx context.Context, v *viper.Viper, t reflect.Type, path string, ancestors map[reflect.Type]bool) error {
 	if ancestors[t] {
 		return core.ErrEnvSchema

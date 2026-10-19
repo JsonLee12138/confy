@@ -8,6 +8,8 @@ import (
 	"github.com/JsonLee12138/confy/provider/env"
 )
 
+// TestE2EEnvProvider exercises direct and Provider-based ENV binding through public APIs,
+// including precedence, explicit zeros, invalid-value recovery, and unsupported watching.
 func TestE2EEnvProvider(t *testing.T) {
 	t.Setenv("CONFY_E2E_NAME", "initial")
 	t.Setenv("CONFY_E2E_SERVER_PORT", "9090")

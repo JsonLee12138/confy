@@ -28,7 +28,9 @@ type Config struct {
 	bound     any
 }
 
-// New creates a new Config instance with the given options.
+// New loads one configuration source, defaulting to local files, and enables ENV lookup.
+// Explicit Provider selection conflicts with root Local options. If loading
+// fails, New cancels its context and closes owned Provider resources.
 func New(opts ...Option) (*Config, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
@@ -89,14 +91,16 @@ func New(opts ...Option) (*Config, error) {
 	}, nil
 }
 
-// Get returns the value for the given key.
+// Get returns the effective value, including ENV and explicit Set overrides.
+// It remains available after Close and does not decrypt source ciphertext.
 func (c *Config) Get(key string) any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.v.Get(key)
 }
 
-// Set sets a config value.
+// Set writes a Viper override that takes precedence over the source and ENV.
+// It does not rebind targets and is ignored after Close.
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

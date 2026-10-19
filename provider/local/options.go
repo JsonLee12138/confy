@@ -6,26 +6,29 @@ import (
 	"github.com/JsonLee12138/confy/core"
 )
 
-// Option is a function that configures a Options instance.
+// Option configures local discovery before the Provider loads its source.
 type Option func(*Options)
 
+// Options selects the search directory, base name, preferred format, and discovery scope.
 type Options struct {
-	BasePath      string
-	FileName      string
-	FileType      core.FileType
-	LoadAll 	  bool
+	BasePath string
+	FileName string
+	FileType core.FileType
+	LoadAll  bool
 }
 
+// DefaultOptions uses CONFIG_PATH or config as the directory, config as the
+// base name, YAML as the preferred format, and enables discovery of all base names.
 func DefaultOptions() *Options {
 	basePath := os.Getenv("CONFIG_PATH")
 	if basePath == "" {
 		basePath = "config"
 	}
 	return &Options{
-		BasePath:  basePath,
-		FileName:  "config",
-		FileType:  core.YAML,
-		LoadAll: true,
+		BasePath: basePath,
+		FileName: "config",
+		FileType: core.YAML,
+		LoadAll:  true,
 	}
 }
 

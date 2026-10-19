@@ -23,12 +23,16 @@ type App struct {
 	} `mapstructure:"database"`
 }
 
+// Validate rejects server ports outside the TCP port range when explicitly called by Config.
 func (a *App) Validate() error {
 	if a.Server.Port < 1 || a.Server.Port > 65535 {
 		return fmt.Errorf("invalid server port")
 	}
 	return nil
 }
+
+// main reads one Nacos document using connection settings from ENV and validates the bound app.
+// It does not enable watching or print database credentials.
 func main() {
 	address := os.Getenv("NACOS_SERVER_ADDR")
 	if address == "" {

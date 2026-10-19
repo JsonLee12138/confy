@@ -16,6 +16,7 @@ import (
 	"github.com/JsonLee12138/confy"
 )
 
+// TestInvalidOptionsAndDocuments rejects unsafe source settings and invalid or empty documents.
 func TestInvalidOptionsAndDocuments(t *testing.T) {
 	for _, opts := range [][]Option{nil, {WithDataID("x")}, {WithDataID("x"), WithFormat("xml")}} {
 		p := New(opts...)
@@ -50,6 +51,7 @@ type fakeSDK struct {
 	observed                chan string
 }
 
+// GetConfig returns fake source state under a mutex and optionally signals a read barrier.
 func (f *fakeSDK) GetConfig(vo.ConfigParam) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -62,34 +64,46 @@ func (f *fakeSDK) GetConfig(vo.ConfigParam) (string, error) {
 	}
 	return f.content, f.readErr
 }
+
+// ListenConfig records the subscriber callback and returns the configured registration failure.
 func (f *fakeSDK) ListenConfig(p vo.ConfigParam) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.callback = p.OnChange
 	return f.listenErr
 }
+
+// CancelListenConfig counts cancellation attempts without contacting a server.
 func (f *fakeSDK) CancelListenConfig(vo.ConfigParam) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.canceled++
 	return nil
 }
+
+// CloseClient records ownership cleanup for lifecycle assertions.
 func (f *fakeSDK) CloseClient() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closed++
 }
+
+// setContent replaces fake remote content without notifying the subscriber.
 func (f *fakeSDK) setContent(content string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.content = content
 }
+
+// notify dispatches deliberately stale callback content to verify the watcher rereads the source.
 func (f *fakeSDK) notify() {
 	f.mu.Lock()
 	callback := f.callback
 	f.mu.Unlock()
 	callback("", "", "", "out-of-order-old-content")
 }
+
+// watchEvents subscribes with buffered result channels and registers watcher cleanup.
 func watchEvents(t *testing.T, p *Provider, ctx context.Context) (provider.Watcher, <-chan provider.Change, <-chan error) {
 	t.Helper()
 	changes := make(chan provider.Change, 2048)
@@ -101,6 +115,8 @@ func watchEvents(t *testing.T, p *Provider, ctx context.Context) (provider.Watch
 	t.Cleanup(func() { _ = w.Close() })
 	return w, changes, failures
 }
+
+// await receives one test event or fails after the bounded delivery timeout.
 func await[T any](t *testing.T, ch <-chan T) T {
 	t.Helper()
 	select {
@@ -112,6 +128,8 @@ func await[T any](t *testing.T, ch <-chan T) T {
 		return zero
 	}
 }
+
+// awaitName reads shared Viper state under its lock until the expected source version arrives.
 func awaitName(t *testing.T, p *Provider, changes <-chan provider.Change, name string) {
 	t.Helper()
 	deadline := time.After(7 * time.Second)
@@ -129,6 +147,8 @@ func awaitName(t *testing.T, p *Provider, changes <-chan provider.Change, name s
 		}
 	}
 }
+
+// fakeProvider injects an isolated SDK fake and registers Provider resource cleanup.
 func fakeProvider(t *testing.T, f *fakeSDK) *Provider {
 	t.Helper()
 	p := New(WithDataID("test.yaml"), WithServers([]constant.ServerConfig{{IpAddr: "localhost", Port: 8848}}), WithClientConfig(constant.ClientConfig{CacheDir: t.TempDir()}))
@@ -136,6 +156,9 @@ func fakeProvider(t *testing.T, f *fakeSDK) *Provider {
 	t.Cleanup(func() { _ = p.Close() })
 	return p
 }
+
+// TestWatcherReconciliationCoalescingAndCleanup checks subscription-gap recovery,
+// coalesced wakeups, current-source reads, and subscription/cache cleanup.
 func TestWatcherReconciliationCoalescingAndCleanup(t *testing.T) {
 	f := &fakeSDK{content: "name: before"}
 	p := fakeProvider(t, f)
@@ -180,6 +203,9 @@ func TestWatcherReconciliationCoalescingAndCleanup(t *testing.T) {
 		t.Fatal("cache directory not removed")
 	}
 }
+
+// TestStrictCacheAndSafeErrors checks private cache ownership, strict startup,
+// and errors that omit SDK configuration content.
 func TestStrictCacheAndSafeErrors(t *testing.T) {
 	f := &fakeSDK{readErr: errors.New("secret-content secret-password")}
 	p := fakeProvider(t, f)
@@ -205,6 +231,8 @@ func TestStrictCacheAndSafeErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestWatchFailureRetryAndContext checks registration failure, retry, and context cancellation.
 func TestWatchFailureRetryAndContext(t *testing.T) {
 	f := &fakeSDK{content: "name: x", listenErr: errors.New("secret")}
 	p := fakeProvider(t, f)
@@ -230,6 +258,7 @@ func TestWatchFailureRetryAndContext(t *testing.T) {
 	awaitName(t, p, changes, "restarted")
 }
 
+// TestWatcherReconcilesWithoutNotification verifies consistency reads recover a missed SDK notification.
 func TestWatcherReconcilesWithoutNotification(t *testing.T) {
 	f := &fakeSDK{content: "name: initial"}
 	p := fakeProvider(t, f)
@@ -239,6 +268,7 @@ func TestWatcherReconcilesWithoutNotification(t *testing.T) {
 	awaitName(t, p, changes, "missed-notification")
 }
 
+// TestWatchCallbackCanCloseProvider checks callback reentry can close without deadlocking.
 func TestWatchCallbackCanCloseProvider(t *testing.T) {
 	f := &fakeSDK{content: "name: initial"}
 	p := fakeProvider(t, f)
@@ -253,6 +283,8 @@ func TestWatchCallbackCanCloseProvider(t *testing.T) {
 	await(t, w.(*watcher).finished)
 }
 
+// TestWatchReconciliationReadFailureCanRetry checks a failed post-subscription read
+// is reported, cleaned up, and retryable.
 func TestWatchReconciliationReadFailureCanRetry(t *testing.T) {
 	f := &fakeSDK{content: "name: initial"}
 	p := fakeProvider(t, f)
@@ -324,6 +356,8 @@ func TestLoadAndWatchShareViper(t *testing.T) {
 	}
 }
 
+// TestConfyReadsLatestSourceWhenRebindingFails distinguishes the latest parseable Viper
+// source from the last successfully bound target and verifies subsequent recovery.
 func TestConfyReadsLatestSourceWhenRebindingFails(t *testing.T) {
 	f := &fakeSDK{content: "name: initial\nport: 1\nremoved: old\nsecret: ''"}
 	p := fakeProvider(t, f)
@@ -365,6 +399,8 @@ func TestConfyReadsLatestSourceWhenRebindingFails(t *testing.T) {
 	}
 }
 
+// TestWriteConfigReplacesSourceAndPreservesOverrides checks stable Viper identity,
+// removal of deleted source fields, and persistence of explicit Set values.
 func TestWriteConfigReplacesSourceAndPreservesOverrides(t *testing.T) {
 	for format, documents := range map[confy.FileType][2]string{
 		confy.YAML: {"name: first\nremoved: old\nport: 1", "name: second\nport: 2"},
@@ -411,6 +447,8 @@ func TestWriteConfigReplacesSourceAndPreservesOverrides(t *testing.T) {
 	}
 }
 
+// TestWatcherOwnsDeduplicationAndIncludesOverrides checks suppression of unchanged
+// reads while including effective Set changes in Provider notification decisions.
 func TestWatcherOwnsDeduplicationAndIncludesOverrides(t *testing.T) {
 	f := &fakeSDK{content: "name: initial", observed: make(chan string, 32)}
 	p := fakeProvider(t, f)

@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// TestEncryptDecrypt_AESGCM verifies authenticated encryption round-trips the original bytes.
 func TestEncryptDecrypt_AESGCM(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -31,6 +32,7 @@ func TestEncryptDecrypt_AESGCM(t *testing.T) {
 	}
 }
 
+// TestDecryptAESGCM_WrongKey ensures decryption rejects an unrelated AES key.
 func TestDecryptAESGCM_WrongKey(t *testing.T) {
 	key1 := make([]byte, 32)
 	key2 := make([]byte, 32)
@@ -45,6 +47,7 @@ func TestDecryptAESGCM_WrongKey(t *testing.T) {
 	}
 }
 
+// TestEncryptDecrypt_Base64 checks the configuration ciphertext encoding round-trip.
 func TestEncryptDecrypt_Base64(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -66,6 +69,7 @@ func TestEncryptDecrypt_Base64(t *testing.T) {
 	}
 }
 
+// TestIsEncryptedValue distinguishes supported ciphertext markers from ordinary values.
 func TestIsEncryptedValue(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -84,6 +88,8 @@ func TestIsEncryptedValue(t *testing.T) {
 	}
 }
 
+// TestBindEncryptedViewTime checks shared time decoding in the temporary decrypted Viper
+// while ensuring decryption leaves source ciphertext unchanged.
 func TestBindEncryptedViewTime(t *testing.T) {
 	key := []byte("01234567890123456789012345678901")
 	encrypted, err := encryptConfigValue("plain", key)
