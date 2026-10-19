@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -23,7 +24,12 @@ func ResolveBaseInheritance(path string, fileType FileType, visited map[string]b
 
 	v := viper.New()
 	v.SetConfigFile(path)
-	v.SetConfigType(string(fileType))
+	switch ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), ".")); ext {
+	case "yaml", "yml", "json", "toml":
+		v.SetConfigType(ext)
+	default:
+		v.SetConfigType(string(fileType))
+	}
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("confy: failed to read %s: %w", path, err)
 	}

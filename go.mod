@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/creasty/defaults v1.8.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.6-0.20260917093256-70993e7b0590
 	github.com/spf13/viper v1.21.0
 	go.uber.org/zap v1.21.0
@@ -38,7 +39,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clbanning/mxj/v2 v2.5.5 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af // indirect

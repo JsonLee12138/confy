@@ -3,6 +3,7 @@ package confy
 import (
 	"crypto/rand"
 	"testing"
+	"time"
 )
 
 func TestEncryptDecrypt_AESGCM(t *testing.T) {
@@ -80,5 +81,33 @@ func TestIsEncryptedValue(t *testing.T) {
 		if got := isEncryptedValue(tt.input); got != tt.expected {
 			t.Errorf("isEncryptedValue(%q) = %v, want %v", tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestBindEncryptedViewTime(t *testing.T) {
+	key := []byte("01234567890123456789012345678901")
+	encrypted, err := encryptConfigValue("plain", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "started_at: '2026-10-19T06:00:00Z'\npassword: '"+encrypted+"'\n")
+	cfg, err := New(WithPath(dir), WithEncryption("aes-gcm", key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cfg.Close()
+	var target struct {
+		StartedAt time.Time `mapstructure:"started_at"`
+		Password  string    `mapstructure:"password"`
+	}
+	if err := cfg.Bind(&target); err != nil {
+		t.Fatal(err)
+	}
+	if target.StartedAt.IsZero() || target.Password != "plain" {
+		t.Fatalf("binding = %+v", target)
+	}
+	if cfg.Get("password") != encrypted {
+		t.Fatal("decryption changed source")
 	}
 }

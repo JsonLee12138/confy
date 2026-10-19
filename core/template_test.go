@@ -101,3 +101,33 @@ func writeFile(t *testing.T, dir, name, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestResolveBaseInheritanceMixedFormats(t *testing.T) {
+	for _, tc := range []struct {
+		name, childName, child, parentName, parent string
+		format                                     FileType
+	}{
+		{"yaml-from-toml", "config.yaml", "base: base.toml\nname: child\n", "base.toml", "name = \"parent\"\nport = 8080\n", YAML},
+		{"toml-from-yaml", "config.toml", "base = \"base.yaml\"\nname = \"child\"\n", "base.yaml", "name: parent\nport: 8080\n", TOML},
+		{"toml-with-yaml-default", "config.toml", "base = \"base.yaml\"\nname = \"child\"\n", "base.yaml", "port: 8080\n", YAML},
+		{"json-from-toml", "config.json", `{"base":"base.toml","name":"child"}`, "base.toml", "port = 8080\n", YAML},
+		{"extensionless-fallback", "config", "base: base.toml\nname: child\n", "base.toml", "port = 8080\n", YAML},
+		{"yml-extension", "config.yml", "base: base.toml\nname: child\n", "base.toml", "port = 8080\n", TOML},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, tc.childName, tc.child)
+			writeFile(t, dir, tc.parentName, tc.parent)
+			got, err := ResolveBaseInheritance(filepath.Join(dir, tc.childName), tc.format, make(map[string]bool))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["name"] != "child" || got["port"] == nil {
+				t.Fatalf("merged settings = %v", got)
+			}
+			if _, ok := got["base"]; ok {
+				t.Fatal("base directive retained")
+			}
+		})
+	}
+}

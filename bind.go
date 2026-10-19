@@ -5,6 +5,7 @@ import (
 	"log"
 	"reflect"
 
+	"github.com/JsonLee12138/confy/core"
 	"github.com/JsonLee12138/confy/provider"
 	"github.com/creasty/defaults"
 )
@@ -83,7 +84,7 @@ func (c *Config) bind(instance any) error {
 	if err != nil {
 		return err
 	}
-	if err := v.Unmarshal(decoded.Interface()); err != nil {
+	if err := v.Unmarshal(decoded.Interface(), core.DecodeOption()); err != nil {
 		return err
 	}
 	target.Elem().Set(decoded.Elem())

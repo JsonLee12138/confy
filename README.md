@@ -63,7 +63,7 @@ func main() {
 
 Run `go run .`, or override the port with `MYAPP_SERVER_PORT=9090 go run .`.
 
-`Bind` applies `default` tags before decoding, preserving configured `0`, `false`, and empty strings. Each bind replaces the target from a fresh struct; failed decoding leaves the target unchanged. Move initial field values into default tags or configuration. Optional nested struct pointers need `default:"{}"` to initialize their defaults. `BindWithDefaults` is deprecated; use `Bind`.
+`Bind` applies `default` tags before decoding, preserving configured `0`, `false`, and empty strings. Each bind replaces the target from a fresh struct; failed decoding leaves the target unchanged. Move initial field values into default tags or configuration. Optional nested struct pointers need `default:"{}"` to initialize their defaults. `BindWithDefaults` is deprecated; use `Bind`. `time.Time` and `*time.Time` fields accept RFC3339 timestamps, including fractional seconds.
 
 ### Choose a Provider
 
@@ -94,7 +94,7 @@ Local files merge in this order, with later files taking priority:
 config.yaml -> config.local.yaml -> config.{env}.yaml -> config.{env}.local.yaml
 ```
 
-Set `GO_ENV_MODE` to select `development`, `production`, or `test`. Local loading also supports environment aliases and mixed YAML, JSON, and TOML files. `WithLoadAll(true)` discovers other configuration files in the directory. A local file can inherit another file with `base: base.yaml`; child values override inherited values.
+Set `GO_ENV_MODE` to select `development`, `production`, or `test`. Local loading also supports environment aliases and mixed YAML, JSON, and TOML files. `WithLoadAll(true)` discovers other configuration files in the directory. A local file can inherit another file with `base: base.yaml`; child values override inherited values. Each file, including inherited files, uses its supported extension to choose the parser; the configured file type is the fallback for unrecognized extensions.
 
 **Nacos**
 

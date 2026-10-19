@@ -5,6 +5,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/JsonLee12138/confy/core"
 	"github.com/JsonLee12138/confy/provider"
@@ -22,6 +23,7 @@ type Provider struct {
 // New collects a struct schema and an optional ENV prefix (without
 // the trailing underscore). Schema values are ignored; only its type is used.
 // Nested structs/pointers and value-struct mapstructure:",squash" are supported.
+// time.Time and *time.Time are leaf fields, decoded as RFC3339 timestamps.
 // Recursive structs, pointer squash and dynamic mapstructure:",remain" schemas
 // are rejected during Load.
 func New(schema any, prefix string) *Provider {
@@ -66,7 +68,7 @@ func BindEnv(target any, prefix string) error {
 		return err
 	}
 	candidate := reflect.New(value.Elem().Type())
-	if err = v.Unmarshal(candidate.Interface()); err != nil {
+	if err = v.Unmarshal(candidate.Interface(), core.DecodeOption()); err != nil {
 		// Decoder errors may include password/token values from ENV.
 		return core.ErrEnvDecode
 	}
@@ -125,7 +127,7 @@ func bindStructEnv(ctx context.Context, v *viper.Viper, t reflect.Type, path str
 		if path != "" {
 			key = path + "." + key
 		}
-		if fieldType.Kind() == reflect.Struct {
+		if fieldType.Kind() == reflect.Struct && fieldType != reflect.TypeOf(time.Time{}) {
 			if err := bindStructEnv(ctx, v, fieldType, key, ancestors); err != nil {
 				return err
 			}

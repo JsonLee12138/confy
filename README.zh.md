@@ -63,7 +63,7 @@ func main() {
 
 执行 `go run .`，或者通过 `MYAPP_SERVER_PORT=9090 go run .` 覆盖端口。
 
-`Bind` 先应用 `default` 标签，再解码配置，保留配置中显式的 `0`、`false` 和空字符串。每次绑定都从新结构体开始，成功后替换目标，解码失败时目标不变。初始字段值请写入默认值标签或配置。可选的嵌套结构体指针需要声明 `default:"{}"` 才会预先初始化其默认值。`BindWithDefaults` 已弃用，请使用 `Bind`。
+`Bind` 先应用 `default` 标签，再解码配置，保留配置中显式的 `0`、`false` 和空字符串。每次绑定都从新结构体开始，成功后替换目标，解码失败时目标不变。初始字段值请写入默认值标签或配置。可选的嵌套结构体指针需要声明 `default:"{}"` 才会预先初始化其默认值。`BindWithDefaults` 已弃用，请使用 `Bind`。`time.Time` 和 `*time.Time` 字段支持 RFC3339 时间字符串，包括小数秒。
 
 ### 选择 Provider
 
@@ -94,7 +94,7 @@ cfg, err := confy.New(confy.WithProvider(local.New(
 config.yaml -> config.local.yaml -> config.{env}.yaml -> config.{env}.local.yaml
 ```
 
-通过 `GO_ENV_MODE` 选择 `development`、`production` 或 `test` 环境。本地加载还支持环境别名，以及 YAML、JSON、TOML 混合文件。`WithLoadAll(true)` 会发现目录中的其他配置文件。使用 `base: base.yaml` 可继承其他本地文件，子文件覆盖继承值。
+通过 `GO_ENV_MODE` 选择 `development`、`production` 或 `test` 环境。本地加载还支持环境别名，以及 YAML、JSON、TOML 混合文件。`WithLoadAll(true)` 会发现目录中的其他配置文件。使用 `base: base.yaml` 可继承其他本地文件，子文件覆盖继承值。每个文件（包括继承文件）优先按支持的扩展名选择解析器，扩展名无法识别时才使用配置的文件类型。
 
 **Nacos**
 

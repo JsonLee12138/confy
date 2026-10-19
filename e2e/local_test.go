@@ -90,3 +90,62 @@ func TestE2ELocalProvider(t *testing.T) {
 	}
 	t.Log("real files: inheritance, ENV/Set precedence, zero/default/delete, watch, invalid document, recovery, Close passed")
 }
+
+func TestE2ELocalMixedFormatWatch(t *testing.T) {
+	for _, tc := range []struct {
+		name, parentName, parent, childName, child, updated string
+		format                                              confy.FileType
+	}{
+		{"yaml-from-toml", "base.toml", "port = 8080\n", "config.yaml", "base: base.toml\nname: initial\n", "base: base.toml\nname: updated\n", confy.YAML},
+		{"toml-with-yaml-default", "base.yaml", "port: 8080\n", "config.toml", "base = \"base.yaml\"\nname = \"initial\"\n", "base = \"base.yaml\"\nname = \"updated\"\n", confy.YAML},
+		{"toml-from-yaml", "base.yaml", "port: 8080\n", "config.toml", "base = \"base.yaml\"\nname = \"initial\"\n", "base = \"base.yaml\"\nname = \"updated\"\n", confy.TOML},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			write := func(name, content string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(tc.parentName, tc.parent)
+			write(tc.childName, tc.child)
+			var target struct {
+				Name string
+				Port int
+			}
+			updates := make(chan struct {
+				Name string
+				Port int
+			}, 16)
+			cfg, err := confy.New(confy.WithProvider(local.New(local.WithPath(dir), local.WithFileType(tc.format), local.WithLoadAll(false))), confy.WithWatch(true), confy.WithOnChange(func(confy.Event) { updates <- target }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cfg.Close()
+			if err := cfg.Bind(&target); err != nil {
+				t.Fatal(err)
+			}
+			if target.Name != "initial" || target.Port != 8080 {
+				t.Fatalf("initial = %+v", target)
+			}
+			write(tc.childName, tc.updated)
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
+			for {
+				select {
+				case got := <-updates:
+					if got.Name == "updated" {
+						if got.Port != 8080 {
+							t.Fatal("inherited value lost")
+						}
+						return
+					}
+				case <-timer.C:
+					t.Fatal("mixed-format watch did not rebind")
+					return
+				}
+			}
+		})
+	}
+}

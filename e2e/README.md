@@ -4,8 +4,9 @@ These tests run as the external `e2e_test` package. They import `confy` and its 
 
 | File | Coverage |
 | --- | --- |
-| `local_test.go` | Real local files, inheritance, binding, ENV/Set precedence, watching, failures and recovery |
+| `local_test.go` | Real local files, mixed-format inheritance/loading/reload, binding, ENV/Set precedence, watching, failures and recovery |
 | `env_test.go` | Process ENV, direct BindEnv, ENV Provider binding, defaults, errors and recovery |
+| `time_test.go` | ENV direct/Provider time binding, pointers, invalid values, duration and weak-slice compatibility |
 | `nacos_test.go` | Real Nacos lifecycle, reconnect, strict startup, cache cleanup, YAML/JSON/TOML updates |
 | `settings_test.go` | Shared application configuration schema |
 

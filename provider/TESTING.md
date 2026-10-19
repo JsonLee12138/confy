@@ -25,7 +25,7 @@ env -u GOROOT MYAPP_SERVER_HOST=127.0.0.1 MYAPP_SERVER_PORT=9090 go run ./env
 env -u GOROOT NACOS_GROUP=CONFY_EXAMPLES NACOS_DATA_ID=confy-example.yaml MYAPP_SERVER_PORT=9090 go run ./nacos
 ```
 
-全部跨包测试集中在 `e2e/`，使用 `e2e_test` 包，仅调用 `confy` 与 Provider 的公开接口；普通单元测试保留在实现包中。
+全部跨包测试集中在 `e2e/`，使用 `e2e_test` 包，仅调用 `confy` 与 Provider 的公开接口；普通单元测试保留在实现包中。新增回归还覆盖混合 YAML/TOML 文件及继承的监听重载、ENV 的 time.Time/时间指针、非法时间保留目标、duration/字符串和数字切片兼容，以及解密绑定视图中的时间字段。
 
 ## 已通过的行为
 
