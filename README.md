@@ -228,7 +228,7 @@ go test -race ./...
 go vet ./...
 ```
 
-Local/ENV E2E tests are part of the root suite. Real Nacos tests require explicit connection settings and the `nacos_integration` build tag; see [test instructions and results](provider/TESTING.md).
+Cross-package E2E tests live in [`e2e/`](e2e/README.md) and call public APIs from the external `e2e_test` package. Run Local/ENV tests with `go test -race ./e2e`. Real Nacos tests use the same directory and require explicit connection settings and the `nacos_integration` build tag; see [test instructions and results](provider/TESTING.md).
 
 ## License
 

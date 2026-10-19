@@ -90,6 +90,7 @@ Local 使用 Viper 原生文件监听，当前只监听首个文件；继承/其
 - 覆盖默认值和显式零值、删除字段、ENV/Set 优先级、失败保留绑定目标、恢复及 Close。
 - 监听适配器用真实来源验证更新、注册间隙、重复通知、断线恢复；fake/编译成功不能代替真实服务验证。
 - 运行 `env -u GOROOT go test -race ./...` 和 `env -u GOROOT go vet ./...`。
-- Local/ENV E2E：`env -u GOROOT go test -race -run '^TestE2E' -v .`。
+- 跨包端到端测试集中放在 `e2e/`，使用外部测试包 `e2e_test`，仅通过公开 API 调用根包和 Provider；包内单元测试留在各包。
+- Local/ENV E2E：`env -u GOROOT go test -race -run '^TestE2E' -v ./e2e`。
 - Nacos 的真实测试命令和必要环境变量见 [provider/nacos/README.md](provider/nacos/README.md)。只对独立测试 Group/Data ID 写入或删除。
 - 三种现有来源的可运行示例见 [example/README.md](example/README.md)。

@@ -228,7 +228,7 @@ go test -race ./...
 go vet ./...
 ```
 
-根模块测试包含 Local/ENV E2E。真实 Nacos 测试需要显式连接配置和 `nacos_integration` 构建标签，见 [测试命令和结果](provider/TESTING.md)。
+跨包 E2E 集中放在 [`e2e/`](e2e/README.md)，使用外部测试包 `e2e_test`，通过公开 API 调用不同包。执行 `go test -race ./e2e` 验证 Local/ENV。真实 Nacos 测试也在同一目录，需要显式连接配置和 `nacos_integration` 构建标签，见 [测试命令和结果](provider/TESTING.md)。
 
 ## 许可证
 

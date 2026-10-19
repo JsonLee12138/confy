@@ -21,8 +21,8 @@ export NACOS_NAMESPACE_ID= # explicit empty value selects public
 export NACOS_TEST_GROUP=CONFY_INTEGRATION
 # Inject NACOS_USERNAME/NACOS_PASSWORD securely if required.
 # Set NACOS_EXPECT_AUTH=1 only on an auth-enforcing test environment.
-env -u GOROOT go test -tags=nacos_integration -count=1 -timeout=180s -v ./provider/nacos/...
-env -u GOROOT go test -race -tags=nacos_integration -count=1 -timeout=180s -v ./provider/nacos/...
+env -u GOROOT go test -tags=nacos_integration -count=1 -timeout=180s -v ./e2e
+env -u GOROOT go test -race -tags=nacos_integration -count=1 -timeout=180s -v ./e2e
 ```
 
 The current fixture supports plain HTTP/gRPC, not a TLS test environment. It creates unique confy-integration Data IDs, publishes and deletes only those, scans owned cache files for a test secret, and faults only its own proxy connections. An explicit tagged run missing required environment variables fails. Normal go test never accesses a server.

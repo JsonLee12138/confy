@@ -1,6 +1,6 @@
 //go:build nacos_integration
 
-package nacos
+package e2e_test
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/JsonLee12138/confy"
+	"github.com/JsonLee12138/confy/provider/nacos"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 )
 
@@ -182,7 +183,7 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 	server.Port = httpProxy.port()
 	server.GrpcPort = grpcProxy.port()
 	cacheParent := t.TempDir()
-	p := New(WithDataID(id), WithGroup(s.group), WithServers([]constant.ServerConfig{server}), WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: os.Getenv("NACOS_USERNAME"), Password: os.Getenv("NACOS_PASSWORD"), TimeoutMs: 2000, CacheDir: cacheParent}))
+	p := nacos.New(nacos.WithDataID(id), nacos.WithGroup(s.group), nacos.WithServers([]constant.ServerConfig{server}), nacos.WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: os.Getenv("NACOS_USERNAME"), Password: os.Getenv("NACOS_PASSWORD"), TimeoutMs: 2000, CacheDir: cacheParent}))
 	updates := make(chan integrationConfig, 64)
 	rejected := make(chan error, 64)
 	var bound integrationConfig
@@ -323,7 +324,7 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 		if err != nil || (status != 401 && status != 403) {
 			t.Fatal("server did not deny unauthenticated read")
 		}
-		bad := New(WithDataID(id), WithGroup(s.group), WithServers([]constant.ServerConfig{s.server}), WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: "confy-invalid-user", Password: "confy-invalid-password", TimeoutMs: 1000, CacheDir: t.TempDir()}))
+		bad := nacos.New(nacos.WithDataID(id), nacos.WithGroup(s.group), nacos.WithServers([]constant.ServerConfig{s.server}), nacos.WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: "confy-invalid-user", Password: "confy-invalid-password", TimeoutMs: 1000, CacheDir: t.TempDir()}))
 		defer bad.Close()
 		if _, err = bad.Load(context.Background()); err == nil {
 			t.Fatal("invalid SDK credentials accepted")
@@ -425,7 +426,7 @@ func TestIntegrationStrictStartupWithOldCache(t *testing.T) {
 	proxy.disconnect(true)
 	grpc := newDisconnectProxy(t, net.JoinHostPort(s.server.IpAddr, strconv.FormatUint(s.server.Port+1000, 10)))
 	grpc.disconnect(true)
-	p := New(WithDataID("confy-strict"), WithGroup(s.group), WithServers([]constant.ServerConfig{{IpAddr: "127.0.0.1", Port: proxy.port(), GrpcPort: grpc.port()}}), WithClientConfig(constant.ClientConfig{CacheDir: parent, NamespaceId: s.namespace, TimeoutMs: 500}))
+	p := nacos.New(nacos.WithDataID("confy-strict"), nacos.WithGroup(s.group), nacos.WithServers([]constant.ServerConfig{{IpAddr: "127.0.0.1", Port: proxy.port(), GrpcPort: grpc.port()}}), nacos.WithClientConfig(constant.ClientConfig{CacheDir: parent, NamespaceId: s.namespace, TimeoutMs: 500}))
 	if cfg, err := confy.New(confy.WithProvider(p)); err == nil {
 		_ = cfg.Close()
 		t.Fatal("unavailable remote started from old cache")
@@ -457,8 +458,8 @@ func TestIntegrationFormats(t *testing.T) {
 				}
 			})
 			s.publish(t, id, tc.initial)
-			p := New(WithDataID(id), WithGroup(s.group), WithFormat(tc.format), WithServers([]constant.ServerConfig{s.server}),
-				WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: os.Getenv("NACOS_USERNAME"), Password: os.Getenv("NACOS_PASSWORD"), TimeoutMs: 2000, CacheDir: t.TempDir()}))
+			p := nacos.New(nacos.WithDataID(id), nacos.WithGroup(s.group), nacos.WithFormat(tc.format), nacos.WithServers([]constant.ServerConfig{s.server}),
+				nacos.WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: os.Getenv("NACOS_USERNAME"), Password: os.Getenv("NACOS_PASSWORD"), TimeoutMs: 2000, CacheDir: t.TempDir()}))
 			var target integrationConfig
 			updates := make(chan integrationConfig, 32)
 			cfg, err := confy.New(confy.WithProvider(p), confy.WithWatch(true), confy.WithOnChange(func(confy.Event) { updates <- target }))

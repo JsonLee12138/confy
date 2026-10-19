@@ -5,8 +5,8 @@
 ## 可重复运行
 
 ```sh
-# 根模块：真实本地文件、进程 ENV 的完整用户 API 链路，以及常规回归。
-env -u GOROOT go test -race -count=1 -v . -run '^TestE2E'
+# e2e 外部包：真实文件和进程 ENV，跨包验证完整用户 API 链路。
+env -u GOROOT go test -race -count=1 -v ./e2e -run '^TestE2E'
 env -u GOROOT go test -race -count=1 ./...
 env -u GOROOT go vet ./...
 
@@ -15,7 +15,7 @@ export NACOS_INTEGRATION=1
 export NACOS_SERVER_ADDR=127.0.0.1:8848
 export NACOS_NAMESPACE_ID=
 export NACOS_TEST_GROUP=CONFY_INTEGRATION
-env -u GOROOT go test -race -tags=nacos_integration -count=1 -timeout=180s -v ./provider/nacos -run '^TestIntegration'
+env -u GOROOT go test -race -tags=nacos_integration -count=1 -timeout=180s -v ./e2e -run '^TestIntegration'
 
 # example 是独立 Go 模块。
 cd example
@@ -24,6 +24,8 @@ env -u GOROOT go run ./local
 env -u GOROOT MYAPP_SERVER_HOST=127.0.0.1 MYAPP_SERVER_PORT=9090 go run ./env
 env -u GOROOT NACOS_GROUP=CONFY_EXAMPLES NACOS_DATA_ID=confy-example.yaml MYAPP_SERVER_PORT=9090 go run ./nacos
 ```
+
+全部跨包测试集中在 `e2e/`，使用 `e2e_test` 包，仅调用 `confy` 与 Provider 的公开接口；普通单元测试保留在实现包中。
 
 ## 已通过的行为
 
