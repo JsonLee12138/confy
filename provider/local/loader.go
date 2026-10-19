@@ -1,0 +1,193 @@
+package local
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/JsonLee12138/confy/core"
+	"github.com/JsonLee12138/confy/internal"
+)
+
+// getConfigFilePaths discovers config files based on environment mode.
+// Priority order: config.yaml → config.local.yaml → config.{env}.yaml → config.{env}.local.yaml
+func getConfigFilePaths(opts *Options) []string {
+	env := internal.Mode()
+	fileNames := []string{
+		opts.FileName,
+		fmt.Sprintf("%s.local", opts.FileName),
+		fmt.Sprintf("%s.%s", opts.FileName, env),
+		fmt.Sprintf("%s.%s.local", opts.FileName, env),
+	}
+
+	switch env {
+	case internal.DevMode:
+		fileNames = append(fileNames,
+			fmt.Sprintf("%s.dev", opts.FileName),
+			fmt.Sprintf("%s.dev.local", opts.FileName),
+			fmt.Sprintf("%s.development", opts.FileName),
+			fmt.Sprintf("%s.development.local", opts.FileName),
+		)
+	case internal.ProMode:
+		fileNames = append(fileNames,
+			fmt.Sprintf("%s.pro", opts.FileName),
+			fmt.Sprintf("%s.pro.local", opts.FileName),
+			fmt.Sprintf("%s.prod", opts.FileName),
+			fmt.Sprintf("%s.prod.local", opts.FileName),
+			fmt.Sprintf("%s.production", opts.FileName),
+			fmt.Sprintf("%s.production.local", opts.FileName),
+		)
+	case internal.TestMode:
+		fileNames = append(fileNames,
+			fmt.Sprintf("%s.test", opts.FileName),
+			fmt.Sprintf("%s.test.local", opts.FileName),
+		)
+	}
+
+	// Deduplicate file names while preserving order.
+	fileNames = deduplicate(fileNames)
+
+	var configFiles []string
+	for _, fileName := range fileNames {
+		for _, ext := range supportedExtensions(opts.FileType) {
+			file := filepath.Join(opts.BasePath, fileName+"."+ext)
+			if isDir, exists, _ := internal.Exists(file); exists && !isDir {
+				configFiles = append(configFiles, file)
+				break
+			}
+		}
+	}
+
+	return configFiles
+}
+
+// getAllConfigFilePaths discovers all config files in the directory (LoadAll mode).
+func getAllConfigFilePaths(opts *Options) []string {
+	baseNames := getConfigBaseNames(opts.BasePath, opts.FileType)
+	if len(baseNames) == 0 {
+		return nil
+	}
+
+	sort.Strings(baseNames)
+	baseNames = moveConfigFirst(baseNames)
+
+	seen := make(map[string]struct{})
+	var configFiles []string
+	for _, baseName := range baseNames {
+		tempOpts := *opts
+		tempOpts.FileName = baseName
+		tempOpts.LoadAll = false
+		for _, path := range getConfigFilePaths(&tempOpts) {
+			if _, exists := seen[path]; exists {
+				continue
+			}
+			seen[path] = struct{}{}
+			configFiles = append(configFiles, path)
+		}
+	}
+
+	return configFiles
+}
+
+// getConfigBaseNames finds distinct configuration base names across supported file formats.
+// Environment and local suffixes are removed; unreadable directories produce no names.
+func getConfigBaseNames(basePath string, fileType core.FileType) []string {
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if !isSupportedExt(ext) {
+			continue
+		}
+		base := strings.TrimSuffix(name, ext)
+		base = stripConfigSuffix(base)
+		if base == "" {
+			continue
+		}
+		seen[base] = struct{}{}
+	}
+
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
+}
+
+// stripConfigSuffix removes local and environment suffixes before grouping file variants.
+func stripConfigSuffix(name string) string {
+	name = strings.TrimSuffix(name, ".local")
+	return trimEnvSuffix(name)
+}
+
+// trimEnvSuffix removes one recognized environment suffix without changing the base name.
+func trimEnvSuffix(name string) string {
+	suffixes := []string{".dev", ".development", ".pro", ".prod", ".production", ".test"}
+	for _, s := range suffixes {
+		if strings.HasSuffix(name, s) {
+			return strings.TrimSuffix(name, s)
+		}
+	}
+	return name
+}
+
+// moveConfigFirst places the conventional config base before other names, preserving their order.
+func moveConfigFirst(names []string) []string {
+	idx := -1
+	for i, name := range names {
+		if name == "config" {
+			idx = i
+			break
+		}
+	}
+	if idx <= 0 {
+		return names
+	}
+	out := make([]string, 0, len(names))
+	out = append(out, "config")
+	out = append(out, names[:idx]...)
+	out = append(out, names[idx+1:]...)
+	return out
+}
+
+// supportedExtensions puts the preferred format first when selecting one file per name variant.
+func supportedExtensions(defaultType core.FileType) []string {
+	switch defaultType {
+	case core.JSON:
+		return []string{"json", "yaml", "toml"}
+	case core.TOML:
+		return []string{"toml", "yaml", "json"}
+	default:
+		return []string{"yaml", "json", "toml"}
+	}
+}
+
+// isSupportedExt accepts YAML, YML, JSON, and TOML extensions, with or without a leading dot.
+func isSupportedExt(ext string) bool {
+	ext = strings.TrimPrefix(ext, ".")
+	return ext == "yaml" || ext == "yml" || ext == "json" || ext == "toml"
+}
+
+// deduplicate keeps the first occurrence of each name and reuses the input slice storage.
+func deduplicate(ss []string) []string {
+	seen := make(map[string]struct{}, len(ss))
+	out := ss[:0]
+	for _, s := range ss {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}

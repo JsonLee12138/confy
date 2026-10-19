@@ -1,8 +1,11 @@
 package confy
 
-import "fmt"
+import (
+	"fmt"
+)
 
-// Snapshot captures the current config state for later restoration.
+// Snapshot decodes effective settings into a new map for later Restore.
+// ENV values can appear as plaintext; source ciphertext is not decrypted here.
 func (c *Config) Snapshot() (map[string]any, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -12,11 +15,12 @@ func (c *Config) Snapshot() (map[string]any, error) {
 		return nil, fmt.Errorf("confy: failed to create snapshot: %w", err)
 	}
 
-	c.snapshot = snapshot
 	return snapshot, nil
 }
 
-// Restore restores config from a snapshot.
+// Restore applies snapshot entries as Viper overrides without replacing the source.
+// It does not remove keys absent from the snapshot or rebind targets. A nil map
+// returns ErrNilSnapshot, and a closed Config returns ErrClosed.
 func (c *Config) Restore(snapshot map[string]any) error {
 	if snapshot == nil {
 		return ErrNilSnapshot
@@ -25,10 +29,12 @@ func (c *Config) Restore(snapshot map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.closed {
+		return ErrClosed
+	}
 	for k, v := range snapshot {
 		c.v.Set(k, v)
 	}
 
-	c.snapshot = snapshot
 	return nil
 }

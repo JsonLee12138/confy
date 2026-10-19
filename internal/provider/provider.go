@@ -1,24 +1,12 @@
+// Package provider forwards the retired placeholder to the canonical contracts.
+// Deprecated: import github.com/JsonLee12138/confy/provider directly.
 package provider
 
-import "context"
+import canonical "github.com/JsonLee12138/confy/provider"
 
-// Provider defines the interface for remote configuration sources.
-// This is a v2 placeholder — not used in v1.
-type Provider interface {
-	Load(ctx context.Context) (map[string]any, error)
-	Watch(ctx context.Context, onChange func(Event)) error
-	Close() error
-}
-
-type Event struct {
-	Key   string
-	Value any
-	Type  EventType
-}
-
-type EventType int
-
-const (
-	EventPut    EventType = iota
-	EventDelete
-)
+type Provider = canonical.Provider
+type WatchProvider = canonical.WatchProvider
+type Watcher = canonical.Watcher
+type Change = canonical.Change
+type Event = canonical.Event
+type EventOp = canonical.EventOp

@@ -1,10 +1,15 @@
 package confy
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
+	"github.com/JsonLee12138/confy/provider"
+	"github.com/JsonLee12138/confy/provider/local"
 	"github.com/spf13/viper"
 )
 
@@ -12,17 +17,29 @@ import (
 type Config struct {
 	v         *viper.Viper
 	opts      *configOptions
-	mu        sync.RWMutex
-	watchOnce sync.Once
-	snapshot  map[string]any
+	mu        *sync.RWMutex
+	provider  provider.Provider
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
+	watcher   provider.Watcher
 	bound     any
 }
 
-// New creates a new Config instance with the given options.
+// New loads one configuration source, defaulting to local files, and enables ENV lookup.
+// Explicit Provider selection conflicts with root Local options. If loading
+// fails, New cancels its context and closes owned Provider resources.
 func New(opts ...Option) (*Config, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	source := o.provider
+	if o.providerCount > 1 || (o.providerCount > 0 && (provider.IsNilProvider(source) || o.localExplicit)) {
+		return nil, ErrInvalidOptions
 	}
 
 	// Load .env files first (lower priority than system env)
@@ -41,56 +58,77 @@ func New(opts ...Option) (*Config, error) {
 		}
 	}
 
-	configPaths := getConfigFilePaths(o)
-	if o.loadAll {
-		configPaths = getAllConfigFilePaths(o)
+	if source == nil {
+		source = local.New(o.LocalOption())
 	}
-	if len(configPaths) == 0 {
-		return nil, fmt.Errorf("%w: in path %s", ErrNoConfigFiles, o.basePath)
-	}
-
-	v := viper.New()
-	v.SetConfigType(string(o.fileType))
-
-	// Set the first config file path so WatchConfig() knows what to watch.
-	if len(configPaths) > 0 {
-		v.SetConfigFile(configPaths[0])
-	}
-
-	for _, configPath := range configPaths {
-		resolved, err := resolveBaseInheritance(configPath, o.fileType, make(map[string]bool))
+	ctx, cancel := context.WithCancel(context.Background())
+	v, err := source.Load(ctx)
+	if err != nil || v == nil {
+		cancel()
+		if closer, ok := source.(io.Closer); ok {
+			_ = closer.Close()
+		}
 		if err != nil {
-			return nil, fmt.Errorf("confy: failed to resolve inheritance for %s: %w", configPath, err)
+			return nil, err
 		}
-		for key, val := range resolved {
-			v.Set(key, val)
-		}
+		return nil, ErrInvalidProvider
 	}
-
+	mu := &sync.RWMutex{}
+	if source, ok := source.(provider.SynchronizedProvider); ok {
+		mu = source.ConfigMutex()
+	}
+	// Source values remain in Viper's config layer; explicit Set retains priority.
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	if o.envPrefix != "" {
 		v.SetEnvPrefix(o.envPrefix)
 	}
 	v.AutomaticEnv()
 
-	applyEnvOverrides(v, o.envPrefix)
-
 	return &Config{
-		v:    v,
-		opts: o,
+		v:        v,
+		opts:     o,
+		provider: source, mu: mu, ctx: ctx, cancel: cancel,
 	}, nil
 }
 
-// Get returns the value for the given key.
+// Get returns the effective value, including ENV and explicit Set overrides.
+// It remains available after Close and does not decrypt source ciphertext.
 func (c *Config) Get(key string) any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.v.Get(key)
 }
 
-// Set sets a config value.
+// Set writes a Viper override that takes precedence over the source and ENV.
+// It does not rebind targets and is ignored after Close.
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
 	c.v.Set(key, value)
+}
+
+// Close stops delivery and releases subscriptions and owned Provider resources.
+// It does not wait for callbacks, so it may be called from a callback.
+// Local native Viper watching remains process-scoped; Get remains usable.
+func (c *Config) Close() error {
+	if c == nil || c.mu == nil {
+		return nil
+	}
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		c.cancel()
+		w := c.watcher
+		c.mu.Unlock()
+		if w != nil {
+			c.closeErr = w.Close()
+		}
+		if closer, ok := c.provider.(io.Closer); ok {
+			c.closeErr = errors.Join(c.closeErr, closer.Close())
+		}
+	})
+	return c.closeErr
 }

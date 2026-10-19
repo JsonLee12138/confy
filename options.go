@@ -1,24 +1,45 @@
 package confy
 
-import "os"
+import (
+	"os"
+
+	"github.com/JsonLee12138/confy/provider"
+	"github.com/JsonLee12138/confy/provider/local"
+)
 
 // Option is a function that configures a configOptions instance.
 type Option func(*configOptions)
 
 type configOptions struct {
-	basePath    string
-	fileName    string
-	fileType    FileType
-	envPrefix   string
-	watchable   bool
-	onChange    func(Event)
-	loadAll     bool
-	dotEnvFiles []string
-	dotEnvDir   string
-	encAlgo     string
-	encKey      []byte
+	provider      provider.Provider
+	providerCount int
+	localExplicit bool
+	onError       func(error)
+	basePath      string
+	fileName      string
+	fileType      FileType
+	envPrefix     string
+	watchable     bool
+	onChange      func(Event)
+	loadAll       bool
+	dotEnvFiles   []string
+	dotEnvDir     string
+	encAlgo       string
+	encKey        []byte
+	// local.Options
 }
 
+// LocalOption copies root Local settings into the default Provider, including LoadAll=false.
+func (o *configOptions) LocalOption() local.Option {
+	return func(target *local.Options) {
+		target.BasePath = o.basePath
+		target.FileName = o.fileName
+		target.FileType = o.fileType
+		target.LoadAll = o.loadAll
+	}
+}
+
+// defaultOptions selects CONFIG_PATH or config, YAML input, and disabled watching and LoadAll.
 func defaultOptions() *configOptions {
 	basePath := os.Getenv("CONFIG_PATH")
 	if basePath == "" {
@@ -36,6 +57,7 @@ func defaultOptions() *configOptions {
 // WithPath sets the directory to search for config files.
 func WithPath(path string) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.basePath = path
 	}
 }
@@ -43,13 +65,16 @@ func WithPath(path string) Option {
 // WithFile sets the base config file name (without extension).
 func WithFile(name string) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.fileName = name
 	}
 }
 
-// WithFileType sets the default config file format.
+// WithFileType sets the preferred format for default Local file discovery.
+// Each recognized file extension still selects its own parser.
 func WithFileType(ft FileType) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.fileType = ft
 	}
 }
@@ -61,14 +86,16 @@ func WithEnvPrefix(prefix string) Option {
 	}
 }
 
-// WithWatch enables or disables file watching for hot-reload.
+// WithWatch enables Provider updates after the first successful binding.
+// A source without WatchProvider support causes Bind to return ErrWatchUnsupported.
 func WithWatch(enable bool) Option {
 	return func(o *configOptions) {
 		o.watchable = enable
 	}
 }
 
-// WithOnChange sets the callback for config file changes.
+// WithOnChange runs after a source update has been successfully rebound.
+// It runs outside Config locks; the application must synchronize concurrent target reads.
 func WithOnChange(fn func(Event)) Option {
 	return func(o *configOptions) {
 		o.onChange = fn
@@ -78,6 +105,7 @@ func WithOnChange(fn func(Event)) Option {
 // WithLoadAll enables loading all config files in the directory.
 func WithLoadAll(enable bool) Option {
 	return func(o *configOptions) {
+		o.localExplicit = true
 		o.loadAll = enable
 	}
 }
@@ -109,3 +137,13 @@ func WithEncryption(algo string, key []byte) Option {
 		o.encKey = key
 	}
 }
+
+// WithProvider selects one configuration source instead of default Local loading.
+// A nil source, repeated selection, or combination with root Local options makes
+// New return ErrInvalidOptions. Config closes sources implementing io.Closer.
+func WithProvider(p provider.Provider) Option {
+	return func(o *configOptions) { o.providerCount++; o.provider = p }
+}
+
+// WithOnError observes rejected updates and asynchronous watch errors.
+func WithOnError(fn func(error)) Option { return func(o *configOptions) { o.onError = fn } }

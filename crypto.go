@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 const encryptedPrefix = "enc:AES_GCM:"
@@ -103,4 +105,31 @@ func encryptConfigValue(val string, key []byte) (string, error) {
 		return "", err
 	}
 	return encryptedPrefix + encoded, nil
+}
+
+// bindingViper decrypts only the binding view, keeping source ciphertext out of
+// Viper's explicit override layer so future source updates remain effective.
+func (c *Config) bindingViper() (*viper.Viper, error) {
+	view := c.v
+	for _, key := range c.v.AllKeys() {
+		value := c.v.GetString(key)
+		if !strings.HasPrefix(value, encryptedPrefix) {
+			continue
+		}
+		if c.opts.encAlgo != "aes-gcm" || len(c.opts.encKey) == 0 || !isEncryptedValue(value) {
+			return nil, ErrCandidate
+		}
+		plain, err := decryptConfigValue(value, c.opts.encKey)
+		if err != nil {
+			return nil, ErrCandidate
+		}
+		if view == c.v {
+			view = viper.New()
+			if err := view.MergeConfigMap(c.v.AllSettings()); err != nil {
+				return nil, err
+			}
+		}
+		view.Set(key, plain)
+	}
+	return view, nil
 }
