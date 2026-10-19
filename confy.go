@@ -2,11 +2,14 @@ package confy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
 
+	"github.com/JsonLee12138/confy/provider"
+	"github.com/JsonLee12138/confy/provider/local"
 	"github.com/spf13/viper"
 )
 
@@ -14,11 +17,14 @@ import (
 type Config struct {
 	v         *viper.Viper
 	opts      *configOptions
-	mu        sync.RWMutex
-	provider  Provider
-	watch     watchState
-	lifecycle lifecycleState
-	overrides map[string]any
+	mu        *sync.RWMutex
+	provider  provider.Provider
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
+	watcher   provider.Watcher
 	bound     any
 }
 
@@ -29,8 +35,8 @@ func New(opts ...Option) (*Config, error) {
 		opt(o)
 	}
 
-	provider := o.provider
-	if o.providerCount > 1 || (o.providerCount > 0 && (isNilProvider(provider) || o.localExplicit)) {
+	source := o.provider
+	if o.providerCount > 1 || (o.providerCount > 0 && (provider.IsNilProvider(source) || o.localExplicit)) {
 		return nil, ErrInvalidOptions
 	}
 
@@ -50,14 +56,14 @@ func New(opts ...Option) (*Config, error) {
 		}
 	}
 
-	if provider == nil {
-		provider = &LocalProvider{opts: o}
+	if source == nil {
+		source = local.New(o.LocalOption())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	v, err := provider.Load(ctx)
+	v, err := source.Load(ctx)
 	if err != nil || v == nil {
 		cancel()
-		if closer, ok := provider.(io.Closer); ok {
+		if closer, ok := source.(io.Closer); ok {
 			_ = closer.Close()
 		}
 		if err != nil {
@@ -65,18 +71,21 @@ func New(opts ...Option) (*Config, error) {
 		}
 		return nil, ErrInvalidProvider
 	}
+	mu := &sync.RWMutex{}
+	if source, ok := source.(provider.SynchronizedProvider); ok {
+		mu = source.ConfigMutex()
+	}
+	// Source values remain in Viper's config layer; explicit Set retains priority.
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	if o.envPrefix != "" {
 		v.SetEnvPrefix(o.envPrefix)
 	}
 	v.AutomaticEnv()
 
-	applyEnvOverrides(v, o.envPrefix)
-
 	return &Config{
 		v:        v,
 		opts:     o,
-		provider: provider, lifecycle: lifecycleState{ctx: ctx, cancel: cancel}, overrides: make(map[string]any),
+		provider: source, mu: mu, ctx: ctx, cancel: cancel,
 	}, nil
 }
 
@@ -91,9 +100,31 @@ func (c *Config) Get(key string) any {
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.lifecycle.closed {
+	if c.closed {
 		return
 	}
-	c.overrides[strings.ToLower(key)] = value
 	c.v.Set(key, value)
+}
+
+// Close stops delivery and releases subscriptions and owned Provider resources.
+// It does not wait for callbacks, so it may be called from a callback.
+// Local native Viper watching remains process-scoped; Get remains usable.
+func (c *Config) Close() error {
+	if c == nil || c.mu == nil {
+		return nil
+	}
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		c.cancel()
+		w := c.watcher
+		c.mu.Unlock()
+		if w != nil {
+			c.closeErr = w.Close()
+		}
+		if closer, ok := c.provider.(io.Closer); ok {
+			c.closeErr = errors.Join(c.closeErr, closer.Close())
+		}
+	})
+	return c.closeErr
 }

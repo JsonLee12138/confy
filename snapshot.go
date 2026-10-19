@@ -2,7 +2,6 @@ package confy
 
 import (
 	"fmt"
-	"strings"
 )
 
 // Snapshot captures the current config state for later restoration.
@@ -27,12 +26,11 @@ func (c *Config) Restore(snapshot map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.lifecycle.closed {
+	if c.closed {
 		return ErrClosed
 	}
 	for k, v := range snapshot {
 		c.v.Set(k, v)
-		c.overrides[strings.ToLower(k)] = v
 	}
 
 	return nil

@@ -66,7 +66,7 @@ func main() {
 	}
 	defer cfg.Close()
 	var app App
-	if err = cfg.BindWithDefaults(&app); err != nil {
+	if err = cfg.Bind(&app); err != nil {
 		log.Fatal(err)
 	}
 	if err = cfg.Validate(); err != nil {

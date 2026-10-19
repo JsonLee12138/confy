@@ -72,7 +72,11 @@ func integrationSettings(t *testing.T) *integrationServer {
 	return s
 }
 func (s *integrationServer) request(method, id, content string) (int, string, error) {
-	values := url.Values{"dataId": {id}, "group": {s.group}, "tenant": {s.namespace}, "content": {content}, "type": {"yaml"}}
+	format := strings.TrimPrefix(filepath.Ext(id), ".")
+	if format == "" {
+		format = "yaml"
+	}
+	values := url.Values{"dataId": {id}, "group": {s.group}, "tenant": {s.namespace}, "content": {content}, "type": {format}}
 	if s.token != "" {
 		values.Set("accessToken", s.token)
 	}
@@ -192,7 +196,7 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 	}
 	// Change after Load, before the first subscription.
 	s.publish(t, id, content("between", 2))
-	if err = cfg.BindWithDefaults(&bound); err != nil {
+	if err = cfg.Bind(&bound); err != nil {
 		t.Fatal(err)
 	}
 	got := awaitConfig(t, updates, "between")
@@ -208,7 +212,7 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 		t.Fatal("Set override lost")
 	}
 	currentName := "burst-3"
-	for i, invalid := range []string{"name: [broken", "name: invalid\nencrypted: enc:AES_GCM:broken", "name: invalid-type\ntimeout: not-an-int", "name: invalid-validator", "  "} {
+	for i, invalid := range []string{"name: [broken", "name: invalid\nencrypted: enc:AES_GCM:broken", "name: invalid-type\ntimeout: not-an-int", "  "} {
 		// A successful intervening version is a serial-consumer barrier. Drain
 		// prior rejections so each error assertion belongs to this publication.
 	drain:
@@ -225,12 +229,45 @@ func TestIntegrationRNacosLifecycle(t *testing.T) {
 		case <-time.After(15 * time.Second):
 			t.Fatal("rejected update not reported")
 		}
-		if cfg.Get("name") != currentName {
-			t.Fatal("invalid update committed")
+		expectedName := currentName
+		if i == 1 {
+			expectedName = "invalid"
+		}
+		if i == 2 {
+			expectedName = "invalid-type"
+		}
+		// Error notifications do not carry a source version: an SDK retry for
+		// the previous document may arrive after the last success callback.
+		// Wait for this parseable version before asserting its effective state.
+		deadline := time.Now().Add(15 * time.Second)
+		for cfg.Get("name") != expectedName && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if cfg.Get("name") != expectedName {
+			t.Fatalf("Viper did not converge to parseable version %s", expectedName)
+		}
+		// Synchronize direct target inspection with the shared config lock.
+		p.ConfigMutex().RLock()
+		boundName := bound.Name
+		p.ConfigMutex().RUnlock()
+		if boundName != currentName {
+			t.Fatal("failed binding changed the target")
 		}
 		currentName = fmt.Sprintf("valid-%d", i)
 		s.publish(t, id, content(currentName, 20+i))
 		awaitConfig(t, updates, currentName)
+	}
+	// Business validation is explicit for both initial binding and updates.
+	s.publish(t, id, content("invalid-validator", 30))
+	awaitConfig(t, updates, "invalid-validator")
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("explicit business validation did not run")
+	}
+	currentName = "valid-after-validation"
+	s.publish(t, id, content(currentName, 31))
+	awaitConfig(t, updates, currentName)
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	if status, _, err := s.request(http.MethodDelete, id, ""); err != nil || status != 200 {
 		t.Fatal("fixture delete failed")
@@ -398,4 +435,49 @@ func TestIntegrationStrictStartupWithOldCache(t *testing.T) {
 		t.Fatal("failed New leaked owned SDK files")
 	}
 	t.Log("strict startup rejected unavailable remote despite pre-existing snapshot and failover; owned files removed")
+}
+
+// TestIntegrationFormats creates three independent documents on the real server.
+func TestIntegrationFormats(t *testing.T) {
+	s := integrationSettings(t)
+	for _, tc := range []struct {
+		format           confy.FileType
+		initial, updated string
+	}{
+		{confy.YAML, "name: initial\nport: 0\nremoved: old\n", "name: updated\nport: 8081\n"},
+		{confy.JSON, `{"name":"initial","port":0,"removed":"old"}`, `{"name":"updated","port":8081}`},
+		{confy.TOML, "name = \"initial\"\nport = 0\nremoved = \"old\"\n", "name = \"updated\"\nport = 8081\n"},
+	} {
+		t.Run(string(tc.format), func(t *testing.T) {
+			id := fmt.Sprintf("confy-format-%d.%s", time.Now().UnixNano(), tc.format)
+			t.Cleanup(func() {
+				status, body, err := s.request(http.MethodDelete, id, "")
+				if err != nil || status != 200 || body != "true" {
+					t.Error("format fixture cleanup failed")
+				}
+			})
+			s.publish(t, id, tc.initial)
+			p := New(WithDataID(id), WithGroup(s.group), WithFormat(tc.format), WithServers([]constant.ServerConfig{s.server}),
+				WithClientConfig(constant.ClientConfig{NamespaceId: s.namespace, Username: os.Getenv("NACOS_USERNAME"), Password: os.Getenv("NACOS_PASSWORD"), TimeoutMs: 2000, CacheDir: t.TempDir()}))
+			var target integrationConfig
+			updates := make(chan integrationConfig, 32)
+			cfg, err := confy.New(confy.WithProvider(p), confy.WithWatch(true), confy.WithOnChange(func(confy.Event) { updates <- target }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cfg.Close()
+			if err := cfg.Bind(&target); err != nil {
+				t.Fatal(err)
+			}
+			if target.Name != "initial" || target.Port != 0 || target.Timeout != 30 || target.Removed != "old" {
+				t.Fatal("initial format binding mismatch")
+			}
+			s.publish(t, id, tc.updated)
+			got := awaitConfig(t, updates, "updated")
+			if got.Port != 8081 || got.Removed != "" {
+				t.Fatal("format update/deletion mismatch")
+			}
+			t.Logf("%s: real publish -> Load -> Bind -> update -> rebind -> deleted field cleared", tc.format)
+		})
+	}
 }

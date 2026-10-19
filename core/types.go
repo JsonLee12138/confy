@@ -1,26 +1,25 @@
 package core
 
+import "github.com/JsonLee12138/confy/provider"
+
 // FileType represents supported configuration file formats.
-type FileType string
+type FileType = provider.FileType
 
 const (
-	YAML FileType = "yaml"
-	JSON FileType = "json"
-	TOML FileType = "toml"
+	YAML = provider.YAML
+	JSON = provider.JSON
+	TOML = provider.TOML
 )
 
 // Event represents a configuration file change event.
-type Event struct {
-	Name string
-	Op   EventOp
-}
+type Event = provider.Event
 
-type EventOp uint32
+type EventOp = provider.EventOp
 
 const (
-	EventCreate EventOp = 1 << iota
-	EventWrite
-	EventRemove
-	EventRename
-	EventChmod
+	EventCreate = provider.EventCreate
+	EventWrite  = provider.EventWrite
+	EventRemove = provider.EventRemove
+	EventRename = provider.EventRename
+	EventChmod  = provider.EventChmod
 )

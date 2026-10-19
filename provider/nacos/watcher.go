@@ -2,10 +2,11 @@ package nacos
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
-	"github.com/JsonLee12138/confy/core"
+	"github.com/JsonLee12138/confy/provider"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 )
 
@@ -15,11 +16,14 @@ type watcher struct {
 	changes   chan struct{}
 	done      chan struct{}
 	once      sync.Once
-	retry     bool // accessed only by the single Next consumer
+	retry     bool // accessed only by the delivery goroutine
+	finished  chan struct{}
 	cancelErr error
 }
 
-func (p *Provider) Watch(ctx context.Context) (core.Watcher, error) {
+// Watch starts one serial delivery loop; repeated calls retain the active
+// subscription and its original context and callbacks.
+func (p *Provider) Watch(ctx context.Context, onChange func(provider.Change), onError func(error)) (provider.Watcher, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -32,13 +36,13 @@ func (p *Provider) Watch(ctx context.Context) (core.Watcher, error) {
 		select {
 		case <-p.watcher.done:
 		default:
-			return nil, p.safe(ErrSubscribe)
+			return p.watcher, nil
 		}
 	}
-	w := &watcher{ctx: ctx, provider: p, changes: make(chan struct{}, 1), done: make(chan struct{})}
+	w := &watcher{ctx: ctx, provider: p, changes: make(chan struct{}, 1), done: make(chan struct{}), finished: make(chan struct{})}
 	param := vo.ConfigParam{DataId: p.opts.dataID, Group: p.opts.group, OnChange: func(_, _, _, _ string) {
 		// SDK dispatches callbacks in goroutines: content can arrive out of order.
-		// Coalesce wakeups and re-read the current remote value in Next instead.
+		// Coalesce wakeups and re-read the current remote value in the delivery loop instead.
 		select {
 		case <-w.done:
 			return
@@ -66,9 +70,47 @@ func (p *Provider) Watch(ctx context.Context) (core.Watcher, error) {
 	case w.changes <- struct{}{}:
 	default:
 	}
+	go w.run(onChange, onError)
 	return w, nil
 }
-func (w *watcher) Next(ctx context.Context) (core.Change, error) {
+
+// run refreshes the shared Viper before notifying Bind. Callbacks execute
+// outside provider/config locks and can re-enter Config methods or Close.
+func (w *watcher) run(onChange func(provider.Change), onError func(error)) {
+	defer close(w.finished)
+	defer w.Close()
+	w.provider.configMu.RLock()
+	last := w.provider.v.AllSettings()
+	w.provider.configMu.RUnlock()
+	for {
+		err := w.refresh()
+		if w.ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-w.done:
+			return
+		default:
+		}
+		if err != nil {
+			if onError != nil {
+				onError(err)
+			}
+			continue
+		}
+		w.provider.configMu.RLock()
+		settings := w.provider.v.AllSettings()
+		w.provider.configMu.RUnlock()
+		if reflect.DeepEqual(last, settings) {
+			continue
+		}
+		last = settings
+		if onChange != nil {
+			onChange(provider.Change{Config: w.provider.v, Event: provider.Event{Name: w.provider.resource(), Op: provider.EventWrite}})
+		}
+	}
+}
+func (w *watcher) refresh() error {
 	// ListenConfig owns the subscription. A bounded consistency read also
 	// covers notifications coalesced/lost while the SDK reconnects or refreshes
 	// its internal listener cache; it does not implement a polling protocol.
@@ -80,32 +122,15 @@ func (w *watcher) Next(ctx context.Context) (core.Change, error) {
 	defer timer.Stop()
 	select {
 	case <-w.ctx.Done():
-		return core.Change{}, w.ctx.Err()
-	case <-ctx.Done():
-		return core.Change{}, ctx.Err()
+		return w.ctx.Err()
 	case <-w.done:
-		return core.Change{}, context.Canceled
+		return context.Canceled
 	case <-w.changes:
 	case <-timer.C:
 	}
-	p := w.provider
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	select {
-	case <-w.done:
-		return core.Change{}, context.Canceled
-	default:
-	}
-	content, err := p.readLocked(ctx)
+	err := w.provider.refresh(w.ctx)
 	w.retry = err != nil
-	if err != nil {
-		return core.Change{}, err
-	}
-	v, err := parse(content, p.opts.format)
-	if err != nil {
-		return core.Change{}, p.safe(ErrDocument)
-	}
-	return core.Change{Config: v, Event: core.Event{Name: p.resource(), Op: core.EventWrite}}, nil
+	return err
 }
 func (w *watcher) stopLocked() {
 	w.once.Do(func() {

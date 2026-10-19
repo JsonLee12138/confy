@@ -1,12 +1,17 @@
 package confy
 
-import "os"
+import (
+	"os"
+
+	"github.com/JsonLee12138/confy/provider"
+	"github.com/JsonLee12138/confy/provider/local"
+)
 
 // Option is a function that configures a configOptions instance.
 type Option func(*configOptions)
 
 type configOptions struct {
-	provider      Provider
+	provider      provider.Provider
 	providerCount int
 	localExplicit bool
 	onError       func(error)
@@ -21,6 +26,16 @@ type configOptions struct {
 	dotEnvDir     string
 	encAlgo       string
 	encKey        []byte
+	// local.Options
+}
+
+func (o *configOptions) LocalOption() local.Option {
+	return func(target *local.Options) {
+		target.BasePath = o.basePath
+		target.FileName = o.fileName
+		target.FileType = o.fileType
+		target.LoadAll = o.loadAll
+	}
 }
 
 func defaultOptions() *configOptions {
@@ -119,7 +134,7 @@ func WithEncryption(algo string, key []byte) Option {
 }
 
 // WithProvider selects a single configuration source instead of local files.
-func WithProvider(p Provider) Option {
+func WithProvider(p provider.Provider) Option {
 	return func(o *configOptions) { o.providerCount++; o.provider = p }
 }
 

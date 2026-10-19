@@ -2,92 +2,104 @@ package confy
 
 import (
 	"fmt"
+	"log"
 	"reflect"
-	"strings"
 
+	"github.com/JsonLee12138/confy/provider"
 	"github.com/creasty/defaults"
-	"github.com/spf13/viper"
 )
 
-// Bind decodes configuration and starts the optional watcher after success.
+// Bind initializes a fresh struct with defaults once, then decodes configuration
+// over it, preserving explicit zero values. Success replaces the target; decode
+// failure leaves it unchanged. The optional watcher uses the same pipeline.
 // Applications must synchronize direct reads of a target that is auto-updated.
-func (c *Config) Bind(instance any) error { return c.bind(instance, false) }
-
-// BindWithDefaults applies defaults before and after decoding, including reloads.
-func (c *Config) BindWithDefaults(instance any) error { return c.bind(instance, true) }
-func (c *Config) bind(instance any, withDefaults bool) error {
-	if c == nil {
+func (c *Config) Bind(instance any) error {
+	if c == nil || c.mu == nil {
 		return ErrNilConfig
-	}
-	if instance == nil {
-		return ErrNilTarget
-	}
-	target := reflect.ValueOf(instance)
-	if target.Kind() != reflect.Ptr {
-		return ErrMustBeStruct
-	}
-	if target.IsNil() {
-		return ErrNilTarget
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.lifecycle.closed {
+	if c.closed {
 		return ErrClosed
 	}
-	if c.v == nil {
-		return ErrNilConfig
-	}
-	if adapterFor(c.provider).singleTarget && c.bound != nil && c.bound != instance {
-		return ErrBoundTarget
-	}
-	settings := c.v.AllSettings()
-	if err := c.decode(c.v, instance, withDefaults); err != nil {
+	if err := c.bind(instance); err != nil {
 		return err
 	}
 	c.bound = instance
-	if c.watch.lastSettings == nil {
-		c.watch.lastSettings = settings
+	if !c.opts.watchable || c.watcher != nil {
+		return nil
 	}
-	// Historical local watching updates the first target; Validate uses the last.
-	if c.watch.target == nil || c.watch.target == instance {
-		c.watch.target = instance
-		c.watch.defaults = withDefaults
+	source, ok := c.provider.(provider.WatchProvider)
+	if !ok {
+		return ErrWatchUnsupported
 	}
-	return c.startWatchLocked()
-}
-func (c *Config) decode(v *viper.Viper, target any, withDefaults bool) error {
-	adapter := adapterFor(c.provider)
-	if withDefaults {
-		if err := defaults.Set(target); err != nil {
-			return fmt.Errorf("confy: failed to set defaults: %w", err)
+	watcher, err := source.Watch(c.ctx, func(change provider.Change) {
+		c.mu.Lock()
+		if c.closed {
+			c.mu.Unlock()
+			return
 		}
-	}
-	for _, key := range v.AllKeys() {
-		value := v.GetString(key)
-		if adapter.strictDecoding && strings.HasPrefix(value, encryptedPrefix) && (c.opts.encAlgo != "aes-gcm" || len(c.opts.encKey) == 0 || !isEncryptedValue(value)) {
-			return ErrCandidate
+		err := c.bind(instance)
+		fn := c.opts.onChange
+		c.mu.Unlock()
+		if err != nil {
+			c.bindingError("bind")
+			return
 		}
-		if c.opts.encAlgo == "aes-gcm" && len(c.opts.encKey) > 0 && isEncryptedValue(value) {
-			plain, err := decryptConfigValue(value, c.opts.encKey)
-			if err != nil {
-				if adapter.strictDecoding {
-					return ErrCandidate
-				}
-				return fmt.Errorf("confy: failed to decrypt key %s: %w", key, err)
-			}
-			v.Set(key, plain)
+		if fn != nil {
+			fn(change.Event)
 		}
-	}
-	if err := v.Unmarshal(target); err != nil {
-		if adapter.strictDecoding {
-			return ErrCandidate
+	}, func(error) { c.bindingError("watch") })
+	if err != nil {
+		if watcher != nil {
+			_ = watcher.Close()
 		}
-		return fmt.Errorf("confy: failed to unmarshal config: %w", err)
+		return err
 	}
-	if withDefaults {
-		if err := defaults.Set(target); err != nil {
-			return fmt.Errorf("confy: failed to set defaults after bind: %w", err)
-		}
+	if watcher == nil {
+		return ErrInvalidProvider
 	}
+	c.watcher = watcher
 	return nil
+}
+
+// BindWithDefaults is a compatibility alias for Bind.
+//
+// Deprecated: Use [Config.Bind] instead; it applies default tags automatically.
+func (c *Config) BindWithDefaults(instance any) error { return c.Bind(instance) }
+
+// bind applies the same Viper binding rules to every source and every update.
+func (c *Config) bind(instance any) error {
+	target := reflect.ValueOf(instance)
+	// defaults.Set panics for nil pointers; other target errors are left to it.
+	if target.Kind() != reflect.Ptr || target.IsNil() {
+		return ErrMustBeStruct
+	}
+	decoded := reflect.New(target.Elem().Type())
+	if err := defaults.Set(decoded.Interface()); err != nil {
+		return err
+	}
+	v, err := c.bindingViper()
+	if err != nil {
+		return err
+	}
+	if err := v.Unmarshal(decoded.Interface()); err != nil {
+		return err
+	}
+	target.Elem().Set(decoded.Elem())
+	return nil
+}
+
+func (c *Config) bindingError(stage string) {
+	c.mu.RLock()
+	fn, closed := c.opts.onError, c.closed
+	c.mu.RUnlock()
+	if closed {
+		return
+	}
+	if fn != nil {
+		fn(fmt.Errorf("%w: stage=%s", ErrCandidate, stage))
+	} else {
+		log.Printf("confy: configuration update failed: stage=%s", stage)
+	}
 }
